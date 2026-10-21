@@ -11,3 +11,6 @@ services:
     buildCommand: npm run build
     startCommand: npm start
     healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
