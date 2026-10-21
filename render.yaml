@@ -1,0 +1,13 @@
+# Render 一键部署配置（Blueprint）
+# 在 Render 控制台点 "New + → Blueprint"，连接本仓库即可自动部署。
+#
+# 注意：免费版没有持久化磁盘，SQLite 数据在每次重新部署/重启后会被清空。
+# 需要长期保存聊天记录与进度时，再升级实例并挂载磁盘即可。
+services:
+  - type: web
+    name: campus-online
+    runtime: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health

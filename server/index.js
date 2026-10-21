@@ -1,5 +1,8 @@
 import express from 'express';
 import { createServer } from 'node:http';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { initDb } from './db.js';
 import { seedIfEmpty } from './seed.js';
@@ -46,6 +49,24 @@ app.use('/api', achievementsRouter);
 app.use('/api', (req, res) => {
   res.status(404).json({ error: '接口不存在' });
 });
+
+// 生产环境：托管前端构建产物（client/dist），前后端同源，一个 URL 即可访问
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDist = path.join(__dirname, '..', 'client', 'dist');
+
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+
+  // 前端用 BrowserRouter，任何非 /api 的 GET 请求都回退到 index.html
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api')) {
+      return res.sendFile(path.join(clientDist, 'index.html'));
+    }
+    next();
+  });
+} else {
+  console.warn('[server] 未找到 client/dist（前端尚未构建）。开发模式请用 npm run dev；部署前请先 npm run build。');
+}
 
 // 统一错误处理
 app.use((err, req, res, next) => {
