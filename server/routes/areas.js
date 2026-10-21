@@ -11,8 +11,8 @@ router.get('/areas', (req, res) => {
   }
 
   const areas = campusId
-    ? db.prepare('SELECT * FROM areas WHERE campus_id = ? ORDER BY id ASC').all(campusId)
-    : db.prepare('SELECT * FROM areas ORDER BY campus_id ASC, id ASC').all();
+    ? db.prepare('SELECT * FROM areas WHERE campus_id = ? AND hidden = 0 ORDER BY id ASC').all(campusId)
+    : db.prepare('SELECT * FROM areas WHERE hidden = 0 ORDER BY campus_id ASC, id ASC').all();
 
   res.json(areas);
 });

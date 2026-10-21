@@ -16,7 +16,15 @@ function metricValue(userId, metric) {
     case 'exp_total':
       return db.prepare('SELECT exp FROM users WHERE id = ?').get(userId)?.exp ?? 0;
     case 'areas_visited':
-      return db.prepare('SELECT COUNT(DISTINCT channel_id) AS c FROM messages WHERE user_id = ?').get(userId).c;
+      return db
+        .prepare(
+          `SELECT COUNT(DISTINCT m.channel_id) AS c
+           FROM messages m
+           JOIN channels ch ON ch.id = m.channel_id
+           JOIN areas a ON a.id = ch.area_id
+           WHERE m.user_id = ? AND a.hidden = 0`
+        )
+        .get(userId).c;
     default:
       return 0;
   }
@@ -33,7 +41,14 @@ router.get('/achievements', (req, res) => {
     return res.status(404).json({ error: '用户不存在' });
   }
 
-  const totalChannels = db.prepare('SELECT COUNT(*) AS c FROM channels').get().c;
+  const totalChannels = db
+    .prepare(
+      `SELECT COUNT(*) AS c
+       FROM channels ch
+       JOIN areas a ON a.id = ch.area_id
+       WHERE a.hidden = 0`
+    )
+    .get().c;
   const list = db.prepare('SELECT * FROM achievements ORDER BY id ASC').all();
 
   const achievements = list.map((a) => {

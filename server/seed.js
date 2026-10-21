@@ -175,7 +175,7 @@ export function seedIfEmpty() {
   const campusName = {};
   const insertCampus = db.prepare('INSERT INTO campuses (name, slug) VALUES (?, ?)');
   const insertArea = db.prepare(
-    'INSERT INTO areas (campus_id, name, slug, description, x, y, color, emoji) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO areas (campus_id, name, slug, description, x, y, color, emoji, hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   const insertChannel = db.prepare('INSERT INTO channels (area_id, name) VALUES (?, ?)');
   const insertUser = db.prepare('INSERT INTO users (nickname, college, avatar, exp, created_at) VALUES (?, ?, ?, ?, ?)');
@@ -203,7 +203,7 @@ export function seedIfEmpty() {
       const slug = `${a.campus}-${i + 1}`;
       const description = `${campusName[a.campus]} · ${a.cat}`;
       const areaInfo = insertArea.run(
-        campusIdBySlug[a.campus], a.name, slug, description, a.x, a.y, a.color, a.emoji
+        campusIdBySlug[a.campus], a.name, slug, description, a.x, a.y, a.color, a.emoji, 0
       );
       const areaId = Number(areaInfo.lastInsertRowid);
       const key = `${a.campus}:${a.name}`;
@@ -211,6 +211,12 @@ export function seedIfEmpty() {
       const channelInfo = insertChannel.run(areaId, `${a.name}频道`);
       channelIdByKey[key] = Number(channelInfo.lastInsertRowid);
     });
+
+    // 世界频道：隐藏区域（不显示在地图/任务下拉里），承载全局聊天
+    const worldAreaInfo = insertArea.run(
+      campusIdBySlug['minglun'], '世界广场', 'world', '全局世界频道', 0, 0, '#38bdf8', '🌐', 1
+    );
+    insertChannel.run(Number(worldAreaInfo.lastInsertRowid), '世界频道');
 
     for (const a of ACHIEVEMENTS) {
       insertAchievement.run(a.code, a.name, a.description, a.icon, a.metric, a.threshold);
@@ -239,4 +245,28 @@ export function seedIfEmpty() {
   })();
 
   return true;
+}
+
+// 幂等：为已存在的库补齐「世界频道」（隐藏区域 + 频道），返回频道 id
+export function ensureWorldChannel() {
+  const world = db.prepare("SELECT id FROM areas WHERE slug = 'world'").get();
+  if (world) {
+    const ch = db.prepare('SELECT id FROM channels WHERE area_id = ? ORDER BY id ASC LIMIT 1').get(world.id);
+    if (ch) return Number(ch.id);
+    const info = db.prepare('INSERT INTO channels (area_id, name) VALUES (?, ?)').run(world.id, '世界频道');
+    return Number(info.lastInsertRowid);
+  }
+
+  const campus = db.prepare("SELECT id FROM campuses WHERE slug = 'minglun'").get();
+  const campusId = campus?.id ?? db.prepare('SELECT id FROM campuses ORDER BY id ASC LIMIT 1').get()?.id;
+  if (!campusId) return null;
+
+  const areaInfo = db
+    .prepare(
+      `INSERT INTO areas (campus_id, name, slug, description, x, y, color, emoji, hidden)
+       VALUES (?, ?, 'world', ?, 0, 0, '#38bdf8', '🌐', 1)`
+    )
+    .run(campusId, '世界广场', '全局世界频道');
+  const chInfo = db.prepare('INSERT INTO channels (area_id, name) VALUES (?, ?)').run(Number(areaInfo.lastInsertRowid), '世界频道');
+  return Number(chInfo.lastInsertRowid);
 }

@@ -41,6 +41,7 @@ export const api = {
   updateUser: (id, body) =>
     request(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   achievements: (userId) => request(`/api/achievements?userId=${encodeURIComponent(userId)}`),
+  world: () => request('/api/world'),
 };
 
 export default api;

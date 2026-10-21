@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { initDb } from './db.js';
-import { seedIfEmpty } from './seed.js';
+import { seedIfEmpty, ensureWorldChannel } from './seed.js';
 import areasRouter from './routes/areas.js';
 import channelsRouter from './routes/channels.js';
 import messagesRouter, { insertMessage } from './routes/messages.js';
@@ -14,10 +14,12 @@ import usersRouter from './routes/users.js';
 import campusesRouter from './routes/campuses.js';
 import postsRouter from './routes/posts.js';
 import achievementsRouter from './routes/achievements.js';
+import worldRouter from './routes/world.js';
 
 // 初始化数据库表结构与种子数据（仅在空库时写入）
 initDb();
 const seeded = seedIfEmpty();
+ensureWorldChannel();
 if (seeded) {
   console.log('[db] 已写入种子数据：2 个校区 / 区域与频道 / 示例消息与帖子 / 成就');
 }
@@ -44,6 +46,7 @@ app.use('/api', usersRouter);
 app.use('/api', campusesRouter);
 app.use('/api', postsRouter);
 app.use('/api', achievementsRouter);
+app.use('/api', worldRouter);
 
 // 未匹配的 /api 路由
 app.use('/api', (req, res) => {

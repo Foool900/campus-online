@@ -44,6 +44,7 @@ export function initDb() {
       y           REAL    NOT NULL DEFAULT 0,
       color       TEXT    NOT NULL DEFAULT '#5bc49a',
       emoji       TEXT    NOT NULL DEFAULT '📍',
+      hidden      INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (campus_id) REFERENCES campuses(id) ON DELETE CASCADE
     );
 
@@ -101,4 +102,10 @@ export function initDb() {
       threshold   INTEGER NOT NULL
     );
   `);
+
+  // 迁移：老库补 hidden 列（世界频道使用隐藏区域承载）
+  const areaCols = db.prepare('PRAGMA table_info(areas)').all().map((c) => c.name);
+  if (!areaCols.includes('hidden')) {
+    db.exec('ALTER TABLE areas ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;');
+  }
 }

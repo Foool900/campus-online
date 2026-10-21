@@ -4,7 +4,6 @@ import { api } from './api.js';
 import { UserContext } from './UserContext.jsx';
 import Layout from './components/Layout.jsx';
 import NicknameModal from './components/NicknameModal.jsx';
-import MapPage from './pages/MapPage.jsx';
 import TasksPage from './pages/TasksPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import AchievementsPage from './pages/AchievementsPage.jsx';
@@ -50,12 +49,12 @@ export default function App() {
       <UserContext.Provider value={value}>
         <Layout>
           <Routes>
-            <Route path="/" element={<MapPage />} />
+            <Route path="/" element={null} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/achievements" element={<AchievementsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
-            <Route path="*" element={<MapPage />} />
+            <Route path="*" element={null} />
           </Routes>
         </Layout>
         {!user && <NicknameModal />}
