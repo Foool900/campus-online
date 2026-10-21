@@ -38,6 +38,9 @@ input, select, textarea { color: var(--text); }
   background: #0b1016;
 }
 
+/* 工具类：绝对定位（HUD 面板钉在 .hud-root 的四角） */
+.absolute { position: absolute; }
+
 .map-viewport {
   position: absolute;
   inset: 0;
