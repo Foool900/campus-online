@@ -24,7 +24,9 @@ export function initDb() {
       nickname      TEXT    NOT NULL,
       college       TEXT    NOT NULL DEFAULT '',
       avatar        TEXT    NOT NULL DEFAULT '🎓',
-      exp           INTEGER NOT NULL DEFAULT 0,
+      exp           INTEGER NOT NULL DEFAULT 0, -- 累计经验 totalExp，只增不减，决定等级
+      available_exp INTEGER NOT NULL DEFAULT 0, -- 可用经验，可托管/可支配
+      frozen_exp    INTEGER NOT NULL DEFAULT 0, -- 冻结经验，托管中
       password_hash TEXT,
       role          TEXT    NOT NULL DEFAULT 'member',
       created_at    TEXT    NOT NULL
@@ -169,6 +171,19 @@ export function initDb() {
       FOREIGN KEY (area_id) REFERENCES areas(id)  ON DELETE SET NULL
     );
 
+    -- 经验流转流水（append-only 审计账本；幂等键唯一防重复划转）
+    -- 说明：from/to/task 均为软引用（不加外键），避免用户/任务删除时级联抹掉历史流水。
+    CREATE TABLE IF NOT EXISTS exp_transactions (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_user_id    INTEGER,
+      to_user_id      INTEGER,
+      amount          INTEGER NOT NULL,
+      task_id         INTEGER,
+      type            TEXT    NOT NULL, -- freeze | transfer | refund | grant
+      idempotency_key TEXT    NOT NULL UNIQUE,
+      created_at      TEXT    NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS achievements (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       code        TEXT    NOT NULL UNIQUE,
@@ -199,6 +214,45 @@ export function initDb() {
       reviewed_at  TEXT,
       note         TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- 任务系统（private 私密备忘 / public 公开任务）
+    -- 状态机：
+    --   private: todo → done（可撤销）
+    --   public:  published → accepted → submitted → approved / terminated
+    --             accepted 接取者放弃 → published；submitted 驳回 → accepted（reject_count 达上限 → terminated）
+    --             published/accepted/submitted 到期 → expired；非终态可被发布者取消 → cancelled
+    CREATE TABLE IF NOT EXISTS tasks (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      publisher_id    INTEGER NOT NULL,
+      assignee_id     INTEGER,
+      type            TEXT    NOT NULL,            -- 'private' | 'public'
+      title           TEXT    NOT NULL,
+      description     TEXT    NOT NULL DEFAULT '',
+      tags            TEXT    NOT NULL DEFAULT '[]', -- JSON 字符串数组
+      reward_exp      INTEGER NOT NULL DEFAULT 0,  -- private 恒 0
+      status          TEXT    NOT NULL,
+      min_complete_at TEXT,
+      deadline_at     TEXT,
+      submitted_proof TEXT,                        -- JSON：{ text, imageUrl, link }
+      reject_count    INTEGER NOT NULL DEFAULT 0,
+      created_at      TEXT    NOT NULL,
+      accepted_at     TEXT,
+      submitted_at    TEXT,
+      finished_at     TEXT,
+      FOREIGN KEY (publisher_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (assignee_id)   REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    -- 审计日志（异常行为打标，第一版只记录不封禁）
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER,
+      event      TEXT    NOT NULL,
+      detail     TEXT,
+      ip         TEXT,
+      user_agent TEXT,
+      created_at TEXT    NOT NULL
     );
 
     -- 好友关系（含好友申请；方向性 user_id → friend_id）
@@ -284,4 +338,14 @@ export function initDb() {
   const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   if (!userCols.includes('password_hash')) db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT;');
   if (!userCols.includes('role')) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member';");
+
+  // 迁移：users 补经验账户字段（exp 保留为累计 totalExp；available_exp 可支配 / frozen_exp 冻结）
+  if (!userCols.includes('available_exp')) {
+    db.exec('ALTER TABLE users ADD COLUMN available_exp INTEGER NOT NULL DEFAULT 0;');
+    db.exec('ALTER TABLE users ADD COLUMN frozen_exp INTEGER NOT NULL DEFAULT 0;');
+    // 历史用户回填：已有累计经验全部视为可用余额（最安全，不坑老玩家），冻结从 0 开始
+    db.exec('UPDATE users SET available_exp = exp;');
+  } else if (!userCols.includes('frozen_exp')) {
+    db.exec('ALTER TABLE users ADD COLUMN frozen_exp INTEGER NOT NULL DEFAULT 0;');
+  }
 }

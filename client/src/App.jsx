@@ -10,6 +10,7 @@ import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import AchievementsPage from './pages/AchievementsPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import ActivityDetailPage from './pages/ActivityDetailPage.jsx';
+import TaskDetailPage from './pages/TaskDetailPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import CoOnlinePage from './pages/CoOnlinePage.jsx';
 
@@ -75,6 +76,7 @@ export default function App() {
             <Route path="/achievements" element={<AchievementsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/activity/:id" element={<ActivityDetailPage />} />
+            <Route path="/task/:id" element={<TaskDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/co-online" element={<CoOnlinePage />} />
             <Route path="*" element={null} />

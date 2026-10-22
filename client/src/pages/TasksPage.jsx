@@ -1,157 +1,236 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
-import TodoCard from '../components/TodoCard.jsx';
 
-const levelOf = (exp) => Math.floor(exp / 100) + 1;
+const STATUS_LABELS = {
+  todo: '待办',
+  done: '已完成',
+  published: '可接取',
+  accepted: '进行中',
+  submitted: '待验收',
+  approved: '已通过',
+  terminated: '已终止',
+  expired: '已过期',
+  cancelled: '已取消',
+};
+const TYPE_LABELS = { public: '公开任务', private: '私密备忘' };
+const FILTERS = [
+  ['public', '公开任务'],
+  ['mine', '我发布的'],
+  ['assigned', '我接取的'],
+  ['private', '私密备忘'],
+];
+
+function formatTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const sameDay = d.toDateString() === new Date().toDateString();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
+}
 
 export default function TasksPage() {
-  const { user, setUser } = useUser();
-  const [tab, setTab] = useState('pending');
-  const [todos, setTodos] = useState([]);
-  const [areas, setAreas] = useState([]);
+  const { user } = useUser();
+  const navigate = useNavigate();
+
+  const [filter, setFilter] = useState('public');
+  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
-  const [completingId, setCompletingId] = useState(null);
+  const [wallet, setWallet] = useState(null);
+  const [expConfig, setExpConfig] = useState(null);
 
-  // 创建表单
+  // 发布表单
+  const [pubOpen, setPubOpen] = useState(false);
+  const [type, setType] = useState('public');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [areaId, setAreaId] = useState('');
-  const [expReward, setExpReward] = useState('10');
+  const [tags, setTags] = useState('');
+  const [rewardExp, setRewardExp] = useState('0');
+  const [deadlineAt, setDeadlineAt] = useState('');
+
+  useEffect(() => {
+    api.wallet().then(setWallet).catch(() => {});
+    api.expConfig().then(setExpConfig).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!user) return;
     setLoading(true);
+    setError('');
     api
-      .todos(user.id)
-      .then(setTodos)
+      .tasks(filter)
+      .then(setTasks)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [user?.id]);
-
-  useEffect(() => {
-    api.areas().then(setAreas).catch(() => {});
-  }, []);
+  }, [user?.id, filter]);
 
   const showToast = (msg) => {
     setToast(msg);
     window.setTimeout(() => setToast(''), 2200);
   };
 
-  const createTodo = async (e) => {
+  const refreshWallet = () => api.wallet().then(setWallet).catch(() => {});
+  const refresh = () => api.tasks(filter).then(setTasks).catch(() => {});
+
+  const rewardCap =
+    wallet && expConfig
+      ? Math.min(Math.floor(wallet.availableExp * expConfig.reward.capRatio), expConfig.reward.capAbsolute)
+      : null;
+
+  const createTask = async (e) => {
     e.preventDefault();
-    if (!user) return;
     const t = title.trim();
     if (!t) {
       showToast('请填写任务标题');
       return;
     }
-    let reward = Number(expReward);
-    if (!Number.isFinite(reward) || reward <= 0) reward = 10;
+    const tagList = tags.split(/[,，\s]+/).filter(Boolean).slice(0, 5);
+    const reward = type === 'private' ? 0 : Math.max(0, Number(rewardExp) || 0);
     try {
-      const created = await api.createTodo({
-        userId: user.id,
+      const created = await api.createTask({
+        type,
         title: t,
         description: description.trim(),
-        dueDate: dueDate || null,
-        areaId: areaId ? Number(areaId) : null,
-        expReward: reward,
+        tags: tagList,
+        rewardExp: reward,
+        deadlineAt: deadlineAt || null,
       });
       setTitle('');
       setDescription('');
-      setDueDate('');
-      setExpReward('10');
-      setTodos((prev) => [created, ...prev]);
-      showToast('待办已创建');
+      setTags('');
+      setRewardExp('0');
+      setDeadlineAt('');
+      setPubOpen(false);
+      refreshWallet();
+      refresh();
+      showToast(type === 'private' ? '私密备忘已创建' : '公开任务已发布');
+      navigate(`/task/${created.id}`);
     } catch (err) {
-      showToast(err.message || '创建失败');
+      showToast(err.message || '发布失败');
     }
   };
-
-  const complete = async (todo) => {
-    if (!user || todo.status === 'completed') return;
-    setCompletingId(todo.id);
-    try {
-      const result = await api.completeTodo(todo.id, { userId: user.id });
-      setTodos((prev) => prev.map((t) => (t.id === todo.id ? result : t)));
-      setUser({ ...user, exp: result.userExp, level: levelOf(result.userExp) });
-      showToast(result.alreadyCompleted ? '该任务已完成过' : `完成！+${result.expReward} 经验值`);
-    } catch (err) {
-      showToast(err.message || '操作失败');
-    } finally {
-      setCompletingId(null);
-    }
-  };
-
-  const pending = todos.filter((t) => t.status === 'pending');
-  const completed = todos.filter((t) => t.status === 'completed');
-  const shown = tab === 'pending' ? pending : completed;
 
   return (
     <div className="page">
       <div className="page-head">
-        <h1>✅ 任务 / 待办</h1>
-        <p>完成任务即可获得经验值，登上排行榜！</p>
+        <h1>📋 任务中心</h1>
+        <p>发布公开任务悬赏经验，或记录你的私密备忘</p>
       </div>
 
-      <form className="card todo-form" onSubmit={createTodo}>
-        <div className="row">
-          <div className="field" style={{ flex: 2 }}>
-            <label>标题 *</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} placeholder="要做什么？" />
+      {wallet && (
+        <div className="task-wallet">
+          <div className="task-wallet-item"><b>Lv.{wallet.level}</b><span>等级</span></div>
+          <div className="task-wallet-item"><b>{wallet.totalExp}</b><span>累计经验</span></div>
+          <div className="task-wallet-item"><b>{wallet.availableExp}</b><span>可用经验</span></div>
+          <div className="task-wallet-item"><b>{wallet.frozenExp}</b><span>冻结经验</span></div>
+        </div>
+      )}
+
+      <div className="tabs" style={{ flexWrap: 'wrap', gap: 8 }}>
+        {FILTERS.map(([k, label]) => (
+          <button key={k} className={'tab' + (filter === k ? ' active' : '')} onClick={() => setFilter(k)}>
+            {label}
+          </button>
+        ))}
+        <button className="btn primary" style={{ marginLeft: 'auto' }} onClick={() => setPubOpen((v) => !v)}>
+          ＋ 发布任务
+        </button>
+      </div>
+
+      {pubOpen && (
+        <form className="card todo-form" onSubmit={createTask}>
+          <div className="row">
+            <div className="field" style={{ flex: 1.4 }}>
+              <label>类型</label>
+              <select
+                value={type}
+                onChange={(e) => {
+                  setType(e.target.value);
+                  if (e.target.value === 'private') setRewardExp('0');
+                }}
+              >
+                <option value="public">公开任务（可设经验奖励）</option>
+                <option value="private">私密备忘（仅自己可见，无奖励）</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>经验奖励</label>
+              <input
+                type="number"
+                min="0"
+                max={rewardCap ?? 500}
+                value={type === 'private' ? '0' : rewardExp}
+                onChange={(e) => setRewardExp(e.target.value)}
+                disabled={type === 'private'}
+              />
+              {type === 'private' ? (
+                <small style={{ color: 'var(--muted)' }}>私密备忘无奖励</small>
+              ) : rewardCap != null ? (
+                <small style={{ color: 'var(--muted)' }}>单任务上限 {rewardCap}（可用 {wallet.availableExp}）</small>
+              ) : null}
+            </div>
+            <div className="field">
+              <label>截止时间（可选）</label>
+              <input type="datetime-local" value={deadlineAt} onChange={(e) => setDeadlineAt(e.target.value)} />
+            </div>
+          </div>
+          <div className="row">
+            <div className="field" style={{ flex: 2 }}>
+              <label>标题 *</label>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} placeholder="要做什么？" />
+            </div>
+            <div className="field" style={{ flex: 2 }}>
+              <label>标签（逗号分隔，最多 5 个）</label>
+              <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="如：跑腿, 学习" />
+            </div>
           </div>
           <div className="field">
-            <label>截止日期</label>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </div>
-        </div>
-        <div className="row">
-          <div className="field" style={{ flex: 2 }}>
             <label>描述</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="补充说明（可选）" />
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="补充说明（可选）" rows={2} />
           </div>
-          <div className="field">
-            <label>关联区域</label>
-            <select value={areaId} onChange={(e) => setAreaId(e.target.value)}>
-              <option value="">不关联</option>
-              {areas.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>经验奖励</label>
-            <input type="number" min="1" max="1000" value={expReward} onChange={(e) => setExpReward(e.target.value)} />
-          </div>
-        </div>
-        <button type="submit" className="btn primary">
-          + 添加待办
-        </button>
-      </form>
-
-      <div className="tabs">
-        <button className={'tab' + (tab === 'pending' ? ' active' : '')} onClick={() => setTab('pending')}>
-          待办 ({pending.length})
-        </button>
-        <button className={'tab' + (tab === 'completed' ? ' active' : '')} onClick={() => setTab('completed')}>
-          已完成 ({completed.length})
-        </button>
-      </div>
+          <button type="submit" className="btn primary">＋ 发布</button>
+        </form>
+      )}
 
       {error && <div className="error-banner">{error}</div>}
       {loading && <div className="empty-state">加载中…</div>}
-      {!loading && !error && shown.length === 0 && (
-        <div className="empty-state">{tab === 'pending' ? '暂无待办，添加一个吧～' : '还没有完成的任务'}</div>
+      {!loading && !error && tasks.length === 0 && (
+        <div className="empty-state">{filter === 'public' ? '暂无公开任务，来发布第一个吧～' : '暂无任务'}</div>
       )}
 
       <div className="todo-list">
-        {shown.map((t) => (
-          <TodoCard key={t.id} todo={t} onComplete={complete} completing={completingId === t.id} />
+        {tasks.map((t) => (
+          <div key={t.id} className="card todo-card task-card" onClick={() => navigate(`/task/${t.id}`)}>
+            <div className="todo-main">
+              <div className="todo-title" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {t.title}
+                <span className="post-category">{TYPE_LABELS[t.type]}</span>
+                <span className={'status-badge status-' + t.status}>{STATUS_LABELS[t.status]}</span>
+              </div>
+              {t.description && <p className="todo-desc">{t.description}</p>}
+              {(t.tags || []).length > 0 && (
+                <div className="task-tags">
+                  {t.tags.map((tag) => (
+                    <span key={tag} className="task-tag">{tag}</span>
+                  ))}
+                </div>
+              )}
+              <div className="todo-meta" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span className="reward-chip">+{t.rewardExp} XP</span>
+                <span>👤 {t.publisherName}</span>
+                {t.assigneeId && <span>🤝 {t.assigneeName}</span>}
+                {t.deadlineAt && <span>📅 {formatTime(t.deadlineAt)}</span>}
+              </div>
+            </div>
+            <div className="todo-actions">
+              <span style={{ color: 'var(--muted)', fontSize: 12 }}>查看 ›</span>
+            </div>
+          </div>
         ))}
       </div>
 

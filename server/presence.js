@@ -5,7 +5,7 @@ import { db } from './db.js';
 const onlineByRoom = new Map();
 
 export function bumpPresence(type, id, userId, delta) {
-  if ((type !== 'activity' && type !== 'chat') || !Number.isInteger(id) || !Number.isInteger(userId)) return;
+  if ((type !== 'activity' && type !== 'chat' && type !== 'task') || !Number.isInteger(id) || !Number.isInteger(userId)) return;
   const key = `${type}:${id}`;
   let m = onlineByRoom.get(key);
   if (!m) {
@@ -28,6 +28,8 @@ export function presenceList(type, id) {
   let adminId = null;
   if (type === 'activity') {
     adminId = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(id)?.user_id ?? null;
+  } else if (type === 'task') {
+    adminId = db.prepare('SELECT publisher_id FROM tasks WHERE id = ?').get(id)?.publisher_id ?? null;
   }
   return rows.map((r) => ({
     userId: r.id,

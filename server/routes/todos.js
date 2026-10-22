@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, nowIso } from '../db.js';
 import { requireRole } from '../auth.js';
+import { applyExpRaw } from '../exp.js';
 
 const router = Router();
 
@@ -100,9 +101,18 @@ router.patch('/todos/:id/complete', requireRole('student', 'admin'), (req, res) 
       return { alreadyCompleted: true };
     }
 
+    // 经验发放走统一入口（幂等键 todo:{id}:complete；此处用无事务变体，避免嵌套事务）。
+    // 先发经验再置完成态：即使中途崩溃，幂等键也能保证重试不会重复发放。
+    const exp = applyExpRaw({
+      toUserId: uid,
+      amount: todo.exp_reward,
+      type: 'grant',
+      idempotencyKey: `todo:${todoId}:complete`,
+    });
+    if (exp.error) return exp;
+
     const completedAt = nowIso();
     db.prepare("UPDATE todos SET status = 'completed', completed_at = ? WHERE id = ?").run(completedAt, todoId);
-    db.prepare('UPDATE users SET exp = exp + ? WHERE id = ?').run(todo.exp_reward, uid);
     return { alreadyCompleted: false };
   });
 

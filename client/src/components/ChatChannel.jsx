@@ -87,6 +87,14 @@ const API_BY_TYPE = {
     reads: (id, mid) => api.conversationMessageReads(id, mid),
     markRead: (id, body) => api.markConversationRead(id, body),
   },
+  task: {
+    list: (id) => api.taskMessages(id),
+    send: (id, body) => api.sendTaskMessage(id, body),
+    recall: (id, mid, body) => api.recallTaskMessage(id, mid, body),
+    react: (id, mid, body) => api.reactTaskMessage(id, mid, body),
+    reads: (id, mid) => api.taskMessageReads(id, mid),
+    markRead: (id, body) => api.markTaskRead(id, body),
+  },
 };
 
 export default function ChatChannel({
@@ -188,7 +196,7 @@ export default function ChatChannel({
     };
     const onPresence = (payload) => {
       if (!active) return;
-      const pid = payload?.postId ?? payload?.channelId;
+      const pid = payload?.conversationId ?? payload?.postId ?? payload?.channelId;
       if (Number(pid) === Number(conversationId)) setOnline(payload.online || []);
     };
 

@@ -16,6 +16,8 @@ import campusesRouter from './routes/campuses.js';
 import postsRouter from './routes/posts.js';
 import achievementsRouter from './routes/achievements.js';
 import worldRouter from './routes/world.js';
+import expRouter from './routes/exp.js';
+import tasksRouter, { expireOverdueTasks } from './routes/tasks.js';
 import stickersRouter from './routes/stickers.js';
 import authRouter from './routes/auth.js';
 import verificationRouter from './routes/verification.js';
@@ -63,6 +65,8 @@ app.use('/api', campusesRouter);
 app.use('/api', postsRouter);
 app.use('/api', achievementsRouter);
 app.use('/api', worldRouter);
+app.use('/api', expRouter);
+app.use('/api', tasksRouter);
 app.use('/api', stickersRouter);
 app.use('/api', verificationRouter);
 app.use('/api', friendsRouter);
@@ -244,3 +248,7 @@ io.on('connection', (socket) => {
 httpServer.listen(PORT, () => {
   console.log(`[server] Campus Online 后端已启动: http://localhost:${PORT}`);
 });
+
+// 超时任务扫描：启动即扫一次，之后每分钟扫一次（到期退回 / 自动通过 + 通知）
+expireOverdueTasks(io);
+setInterval(() => expireOverdueTasks(io), 60 * 1000);

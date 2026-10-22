@@ -1041,6 +1041,39 @@ input, select, textarea { color: var(--text); }
 .status-ended { background: rgba(255, 255, 255, 0.1); color: var(--muted); }
 .status-cancelled { background: rgba(248, 113, 113, 0.18); color: #fca5a5; }
 
+/* 任务状态徽章 */
+.status-published { background: rgba(56, 189, 248, 0.18); color: #7dd3fc; }
+.status-accepted { background: rgba(245, 199, 106, 0.18); color: #f5c76a; }
+.status-submitted { background: rgba(167, 139, 250, 0.18); color: #c4b5fd; }
+.status-approved { background: rgba(52, 211, 153, 0.18); color: #6ee7b7; }
+.status-terminated { background: rgba(248, 113, 113, 0.18); color: #fca5a5; }
+.status-expired { background: rgba(255, 255, 255, 0.1); color: var(--muted); }
+.status-todo { background: rgba(147, 160, 173, 0.18); color: #93a0ad; }
+.status-done { background: rgba(52, 211, 153, 0.16); color: #6ee7b7; }
+
+/* 任务中心 */
+.task-wallet { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.task-wallet-item {
+  flex: 1; min-width: 110px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px 14px;
+}
+.task-wallet-item b { display: block; font-size: 20px; color: #fff; }
+.task-wallet-item span { color: var(--muted); font-size: 12px; }
+.task-card { cursor: pointer; }
+.task-card:hover { border-color: rgba(56, 189, 248, 0.45); }
+.task-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.task-tag { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: rgba(56, 189, 248, 0.14); color: #7dd3fc; }
+.task-proof {
+  background: rgba(0, 0, 0, 0.2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; margin-top: 8px; font-size: 13px;
+}
+.task-proof a { color: #7dd3fc; }
+.task-proof-form { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.task-proof-form textarea, .task-proof-form input {
+  background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); color: #fff; border-radius: 8px; padding: 8px 10px;
+}
+
 /* 管理员标识 / 管理面板 */
 .act-admin-badge {
   font-size: 10px;

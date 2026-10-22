@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { db, nowIso } from '../db.js';
 import { hashPassword, verifyPassword, createSession, destroySession, requireAuth, readToken, getSessionUser } from '../auth.js';
+import { levelOf } from '../config.js';
 
 const router = Router();
-
-const levelOf = (exp) => Math.floor(exp / 100) + 1;
 
 function mapUser(row) {
   if (!row) return row;
@@ -13,7 +12,9 @@ function mapUser(row) {
     nickname: row.nickname,
     college: row.college,
     avatar: row.avatar,
-    exp: row.exp,
+    exp: row.exp, // 累计经验 totalExp（保留旧字段名，兼容前端）
+    availableExp: row.available_exp,
+    frozenExp: row.frozen_exp,
     level: levelOf(row.exp),
     role: row.role,
     createdAt: row.created_at,

@@ -98,12 +98,18 @@ function withInteractions(rows) {
   });
 }
 
-// 世界频道 id 作为 direct/group 消息的 channel_id 占位（满足 NOT NULL 外键，真实维度是 conversation_type/id）
+// 世界频道 id 作为 direct/group/task 消息的 channel_id 占位（满足 NOT NULL 外键，真实维度是 conversation_type/id）
 export function worldChannelId() {
   const area = db.prepare("SELECT id FROM areas WHERE slug = 'world'").get();
   if (!area) return 0;
   const ch = db.prepare('SELECT id FROM channels WHERE area_id = ? ORDER BY id ASC LIMIT 1').get(area.id);
   return ch ? ch.id : 0;
+}
+
+// 任务终态（讨论区只读）
+const TASK_TERMINAL = ['approved', 'terminated', 'expired', 'cancelled'];
+function getTaskForConversation(taskId) {
+  return db.prepare('SELECT id, publisher_id, assignee_id, type, status FROM tasks WHERE id = ?').get(taskId);
 }
 
 // 会话内发送消息（统一）：text / sticker，带 replyTo / mentions
@@ -138,6 +144,14 @@ export function insertConversationMessage(type, id, userId, payload) {
       .prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?')
       .get(id, uid);
     if (!member) return { error: '无权在该会话发言', status: 403 };
+    channelId = worldChannelId();
+    postId = null;
+  } else if (type === 'task') {
+    const task = getTaskForConversation(id);
+    if (!task) return { error: '任务不存在', status: 404 };
+    if (task.type !== 'public') return { error: '私密备忘无讨论区', status: 400 };
+    if (task.publisher_id !== uid && task.assignee_id !== uid) return { error: '只有发布者或接取者可发言', status: 403 };
+    if (TASK_TERMINAL.includes(task.status)) return { error: '任务已结束，只读', status: 403 };
     channelId = worldChannelId();
     postId = null;
   } else {
@@ -208,6 +222,9 @@ export function recallConversationMessage(type, id, messageId, userId) {
   } else if (type === 'group') {
     const g = db.prepare('SELECT owner_id FROM groups WHERE conversation_id = ?').get(id);
     isAdmin = !!(g && g.owner_id === userId);
+  } else if (type === 'task') {
+    const task = getTaskForConversation(id);
+    isAdmin = !!(task && task.publisher_id === userId);
   }
   const isOwn = msg.user_id === userId;
 
@@ -246,6 +263,13 @@ export function reactConversationMessage(type, id, messageId, userId, emoji) {
       .prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?')
       .get(id, userId);
     if (!member) return { error: '无权在该会话操作', status: 403 };
+  } else if (type === 'task') {
+    const task = getTaskForConversation(id);
+    if (!task) return { error: '任务不存在', status: 404 };
+    if (task.publisher_id !== userId && task.assignee_id !== userId) {
+      return { error: '只有发布者或接取者可参与互动', status: 403 };
+    }
+    if (TASK_TERMINAL.includes(task.status)) return { error: '任务已结束，只读', status: 403 };
   }
 
   const e = typeof emoji === 'string' ? emoji.trim() : '';
@@ -284,6 +308,13 @@ export function readConversation(type, id, userId, upTo) {
       .prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?')
       .get(id, userId);
     if (!member) return { error: '无权在该会话操作', status: 403 };
+  }
+  if (type === 'task') {
+    const task = getTaskForConversation(id);
+    if (!task) return { error: '任务不存在', status: 404 };
+    if (task.publisher_id !== userId && task.assignee_id !== userId) {
+      return { error: '无权标记已读', status: 403 };
+    }
   }
   db.prepare(
     `INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at)

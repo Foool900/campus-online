@@ -147,6 +147,31 @@ export const api = {
   createTodo: (body) => request('/api/todos', { method: 'POST', body: JSON.stringify(body) }),
   completeTodo: (id, body) =>
     request(`/api/todos/${id}/complete`, { method: 'PATCH', body: JSON.stringify(body) }),
+  // 任务系统
+  tasks: (filter, status) =>
+    request(`/api/tasks?filter=${encodeURIComponent(filter)}` + (status ? `&status=${encodeURIComponent(status)}` : '')),
+  createTask: (body) => request('/api/tasks', { method: 'POST', body: JSON.stringify(body) }),
+  task: (id) => request(`/api/tasks/${id}`),
+  acceptTask: (id) => request(`/api/tasks/${id}/accept`, { method: 'POST' }),
+  submitTask: (id, body) => request(`/api/tasks/${id}/submit`, { method: 'POST', body: JSON.stringify(body) }),
+  approveTask: (id) => request(`/api/tasks/${id}/approve`, { method: 'POST' }),
+  rejectTask: (id) => request(`/api/tasks/${id}/reject`, { method: 'POST' }),
+  cancelTask: (id) => request(`/api/tasks/${id}/cancel`, { method: 'POST' }),
+  abandonTask: (id) => request(`/api/tasks/${id}/abandon`, { method: 'POST' }),
+  toggleTaskDone: (id) => request(`/api/tasks/${id}/toggle-done`, { method: 'PATCH' }),
+  taskMessages: (id) => request(`/api/tasks/${id}/messages`),
+  sendTaskMessage: (id, body) =>
+    request(`/api/tasks/${id}/messages`, { method: 'POST', body: JSON.stringify(body) }),
+  recallTaskMessage: (id, mid, body) =>
+    request(`/api/tasks/${id}/messages/${mid}/recall`, { method: 'POST', body: JSON.stringify(body) }),
+  reactTaskMessage: (id, mid, body) =>
+    request(`/api/tasks/${id}/messages/${mid}/react`, { method: 'POST', body: JSON.stringify(body) }),
+  taskMessageReads: (id, mid) => request(`/api/tasks/${id}/messages/${mid}/reads`),
+  markTaskRead: (id, body) =>
+    request(`/api/tasks/${id}/read`, { method: 'POST', body: JSON.stringify(body) }),
+  // 经验钱包 / 配置
+  wallet: () => request('/api/exp/wallet'),
+  expConfig: () => request('/api/exp/config'),
   user: (id) => request(`/api/users/${id}`),
   leaderboard: () => request('/api/leaderboard'),
   createUser: (body) => request('/api/users', { method: 'POST', body: JSON.stringify(body) }),
