@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db, nowIso } from '../db.js';
+import { isParticipant } from './posts.js';
 
 const router = Router();
 
@@ -59,6 +60,68 @@ router.get('/channels/:channelId/messages', (req, res) => {
 router.post('/channels/:channelId/messages', (req, res) => {
   const { userId, content } = req.body || {};
   const result = insertMessage(req.params.channelId, userId, content);
+  if (result.error) {
+    return res.status(result.status).json({ error: result.error });
+  }
+  res.status(201).json(result.message);
+});
+
+const SELECT_POST_MESSAGE = `
+  SELECT m.id,
+         m.channel_id AS channelId,
+         m.post_id    AS postId,
+         m.user_id    AS userId,
+         m.content,
+         m.created_at AS createdAt,
+         u.nickname,
+         u.avatar,
+         u.college
+  FROM messages m
+  JOIN users u ON u.id = m.user_id
+`;
+
+// 活动帖专属讨论区：发送消息（仅参与者可发言；消息归入活动帖所属频道，post_id 标记归属）
+export function insertPostMessage(postId, userId, content) {
+  const pid = Number(postId);
+  if (!Number.isInteger(pid)) return { error: '无效的活动 ID', status: 400 };
+  const uid = Number(userId);
+  if (!Number.isInteger(uid)) return { error: '缺少有效的 userId', status: 400 };
+
+  const text = typeof content === 'string' ? content.trim() : '';
+  if (!text) return { error: '消息内容不能为空', status: 400 };
+  if (text.length > 500) return { error: '消息内容过长（最多 500 字）', status: 400 };
+
+  const post = db.prepare('SELECT id, channel_id FROM posts WHERE id = ?').get(pid);
+  if (!post) return { error: '活动不存在', status: 404 };
+
+  if (!isParticipant(pid, uid)) return { error: '加入活动后才能发言', status: 403 };
+
+  const info = db
+    .prepare('INSERT INTO messages (channel_id, user_id, post_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(post.channel_id, uid, pid, text, nowIso());
+
+  const message = db.prepare(`${SELECT_POST_MESSAGE} WHERE m.id = ?`).get(info.lastInsertRowid);
+  return { message };
+}
+
+// GET /api/posts/:id/messages —— 活动讨论区历史消息（旧在上、新在下）
+router.get('/posts/:id/messages', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: '无效的活动 ID' });
+  }
+  const post = db.prepare('SELECT id FROM posts WHERE id = ?').get(id);
+  if (!post) {
+    return res.status(404).json({ error: '活动不存在' });
+  }
+  const messages = db.prepare(`${SELECT_POST_MESSAGE} WHERE m.post_id = ? ORDER BY m.id ASC`).all(id);
+  res.json(messages);
+});
+
+// POST /api/posts/:id/messages —— 发送讨论区消息
+router.post('/posts/:id/messages', (req, res) => {
+  const { userId, content } = req.body || {};
+  const result = insertPostMessage(req.params.id, userId, content);
   if (result.error) {
     return res.status(result.status).json({ error: result.error });
   }

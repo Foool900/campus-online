@@ -8,7 +8,7 @@ import { initDb } from './db.js';
 import { seedIfEmpty, ensureWorldChannel } from './seed.js';
 import areasRouter from './routes/areas.js';
 import channelsRouter from './routes/channels.js';
-import messagesRouter, { insertMessage } from './routes/messages.js';
+import messagesRouter, { insertMessage, insertPostMessage } from './routes/messages.js';
 import todosRouter from './routes/todos.js';
 import usersRouter from './routes/users.js';
 import campusesRouter from './routes/campuses.js';
@@ -89,14 +89,31 @@ io.on('connection', (socket) => {
     if (Number.isInteger(cid)) socket.leave(`channel:${cid}`);
   });
 
-  socket.on('message:send', ({ channelId, userId, content }, ack) => {
-    const cid = Number(channelId);
-    const result = insertMessage(channelId, userId, content);
+  // 活动讨论区房间
+  socket.on('join:post', ({ postId }) => {
+    const pid = Number(postId);
+    if (Number.isInteger(pid)) socket.join(`post:${pid}`);
+  });
+  socket.on('leave:post', ({ postId }) => {
+    const pid = Number(postId);
+    if (Number.isInteger(pid)) socket.leave(`post:${pid}`);
+  });
+
+  socket.on('message:send', ({ channelId, postId, userId, content }, ack) => {
+    const pid = postId ? Number(postId) : null;
+    const result = Number.isInteger(pid)
+      ? insertPostMessage(pid, userId, content)
+      : insertMessage(channelId, userId, content);
     if (result.error) {
       if (typeof ack === 'function') ack({ ok: false, error: result.error });
       return;
     }
-    io.to(`channel:${cid}`).emit('message:new', { channelId: cid, message: result.message });
+    const room = Number.isInteger(pid) ? `post:${pid}` : `channel:${Number(channelId)}`;
+    io.to(room).emit('message:new', {
+      channelId: Number(channelId) || null,
+      postId: pid,
+      message: result.message,
+    });
     if (typeof ack === 'function') ack({ ok: true, message: result.message });
   });
 });

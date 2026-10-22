@@ -8,6 +8,7 @@ import TasksPage from './pages/TasksPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import AchievementsPage from './pages/AchievementsPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
+import ActivityDetailPage from './pages/ActivityDetailPage.jsx';
 
 const STORAGE_KEY = 'campus_user';
 
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/achievements" element={<AchievementsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/activity/:id" element={<ActivityDetailPage />} />
             <Route path="*" element={null} />
           </Routes>
         </Layout>

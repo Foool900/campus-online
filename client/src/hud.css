@@ -386,6 +386,11 @@ input, select, textarea { color: var(--text); }
 .post-title { color: #fff; }
 .post-content { color: #c3cedb; }
 .post-meta { color: var(--muted); }
+.post-card-link { cursor: pointer; }
+.post-card-link:hover { border-color: rgba(56, 189, 248, 0.5); background: rgba(255, 255, 255, 0.08); }
+.post-card-link:active { transform: scale(0.99); }
+.post-card-link:focus-visible { outline: 2px solid rgba(56, 189, 248, 0.6); outline-offset: 2px; }
+.post-card-arrow { margin-left: auto; color: var(--muted); font-size: 18px; flex-shrink: 0; }
 .fab { background: linear-gradient(135deg, #38bdf8, #0ea5e9); color: #04212e; box-shadow: 0 6px 16px rgba(56, 189, 248, 0.4); }
 .fab:hover { filter: brightness(1.08); }
 
@@ -807,4 +812,209 @@ input, select, textarea { color: var(--text); }
 
   /* Toast 上移，避开底部面板 */
   .toast { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ============================================================
+   活动详情页（Discord 频道式：信息区 + 消息流）
+   ============================================================ */
+.activity-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  background: #0b1016;
+  color: var(--text);
+}
+
+.act-backbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(13, 17, 25, 0.6);
+  backdrop-filter: blur(8px);
+  flex-shrink: 0;
+}
+.act-back {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.act-back:active { transform: scale(0.97); }
+.act-back-title { font-size: 14px; font-weight: 600; color: var(--muted); }
+
+.act-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A. 信息区（手机：顶部；桌面：左栏） */
+.act-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(13, 17, 25, 0.5);
+  overflow-y: auto;
+  flex-shrink: 0;
+  max-height: 40vh;
+}
+.act-info-head { display: flex; align-items: center; gap: 8px; }
+.act-info-collapse {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.act-info-title { margin: 0; font-size: 16px; color: #fff; word-break: break-word; }
+.act-info-meta { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: rgba(255, 255, 255, 0.82); }
+.act-info-row { display: flex; gap: 8px; align-items: baseline; }
+.act-info-label { color: var(--muted); min-width: 44px; flex-shrink: 0; }
+.act-info-desc { margin: 0; font-size: 13px; color: #c3cedb; white-space: pre-wrap; word-break: break-word; }
+.act-info-join { display: flex; align-items: center; }
+.act-info-status { font-size: 13px; color: #6ee7b7; }
+.act-info-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  border: none;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+}
+.act-info-summary .act-info-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.act-info-count { color: var(--muted); font-size: 12px; flex-shrink: 0; }
+.act-info-chevron { color: #7dd3fc; flex-shrink: 0; }
+
+/* B. 频道区（消息流） */
+.act-channel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.act-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.act-messages::-webkit-scrollbar { width: 8px; }
+.act-messages::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 4px; }
+.act-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 32px 0; }
+
+.act-msg { display: flex; gap: 10px; }
+.act-msg-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.act-msg-main { min-width: 0; }
+.act-msg-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.act-msg-nick { font-weight: 600; font-size: 13px; color: #7dd3fc; }
+.act-msg-badge {
+  font-size: 10px;
+  color: #3a2505;
+  background: #f5c76a;
+  padding: 1px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.act-msg-time { font-size: 11px; color: var(--muted); }
+.act-msg-content { margin-top: 2px; font-size: 14px; color: rgba(255, 255, 255, 0.9); white-space: pre-wrap; word-break: break-word; }
+.act-msg.mine .act-msg-nick { color: #34d399; }
+.act-msg.failed .act-msg-content { opacity: 0.6; }
+.act-msg-pending { font-size: 11px; color: var(--muted); }
+.act-msg-retry {
+  border: none;
+  background: none;
+  color: #fca5a5;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 2px;
+}
+
+/* 输入区（吸底） */
+.act-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: rgba(13, 17, 25, 0.7);
+  flex-shrink: 0;
+}
+.act-composer textarea {
+  flex: 1;
+  resize: none;
+  max-height: 120px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #fff;
+  outline: none;
+  line-height: 1.4;
+  min-height: 44px;
+}
+.act-composer textarea:focus { border-color: rgba(56, 189, 248, 0.6); }
+.act-composer .btn { flex-shrink: 0; min-height: 44px; }
+.act-composer-lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: rgba(13, 17, 25, 0.7);
+  color: var(--muted);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.act-composer-lock .btn { min-height: 40px; }
+.act-error { padding: 48px 20px; text-align: center; color: #fca5a5; }
+
+/* 桌面：左右分栏 */
+@media (min-width: 933px) {
+  .act-layout { flex-direction: row; }
+  .act-info {
+    width: 300px;
+    max-height: none;
+    border-bottom: none;
+    border-right: 1px solid var(--line);
+  }
 }

@@ -31,6 +31,13 @@ export const api = {
   posts: (channelId) => request(`/api/channels/${channelId}/posts`),
   createPost: (channelId, body) =>
     request(`/api/channels/${channelId}/posts`, { method: 'POST', body: JSON.stringify(body) }),
+  post: (id, userId) =>
+    request(`/api/posts/${id}` + (userId ? `?userId=${encodeURIComponent(userId)}` : '')),
+  joinPost: (id, body) =>
+    request(`/api/posts/${id}/join`, { method: 'POST', body: JSON.stringify(body) }),
+  postMessages: (id) => request(`/api/posts/${id}/messages`),
+  sendPostMessage: (id, body) =>
+    request(`/api/posts/${id}/messages`, { method: 'POST', body: JSON.stringify(body) }),
   todos: (userId) => request(`/api/todos?userId=${encodeURIComponent(userId)}`),
   createTodo: (body) => request('/api/todos', { method: 'POST', body: JSON.stringify(body) }),
   completeTodo: (id, body) =>

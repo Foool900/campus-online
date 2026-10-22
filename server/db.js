@@ -59,6 +59,7 @@ export function initDb() {
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       channel_id INTEGER NOT NULL,
       user_id    INTEGER NOT NULL,
+      post_id    INTEGER,
       content    TEXT    NOT NULL,
       created_at TEXT    NOT NULL,
       FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
@@ -75,6 +76,17 @@ export function initDb() {
       created_at TEXT    NOT NULL,
       FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
+    );
+
+    -- 活动帖的参与者（报名/加入）。发起人视为默认参与者（不重复入库）。
+    -- 权限：仅参与者可在该活动的专属讨论区发言，其余人只读。
+    CREATE TABLE IF NOT EXISTS post_participants (
+      post_id    INTEGER NOT NULL,
+      user_id    INTEGER NOT NULL,
+      created_at TEXT    NOT NULL,
+      PRIMARY KEY (post_id, user_id),
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS todos (
@@ -107,5 +119,11 @@ export function initDb() {
   const areaCols = db.prepare('PRAGMA table_info(areas)').all().map((c) => c.name);
   if (!areaCols.includes('hidden')) {
     db.exec('ALTER TABLE areas ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;');
+  }
+
+  // 迁移：messages 补 post_id 列（活动帖专属讨论区消息；NULL 表示区域频道普通消息）
+  const msgCols = db.prepare('PRAGMA table_info(messages)').all().map((c) => c.name);
+  if (!msgCols.includes('post_id')) {
+    db.exec('ALTER TABLE messages ADD COLUMN post_id INTEGER;');
   }
 }

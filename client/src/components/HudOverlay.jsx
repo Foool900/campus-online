@@ -5,7 +5,8 @@ export default function HudOverlay({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const show = location.pathname !== '/';
+  // 活动详情页自己渲染全屏覆盖层，这里跳过以免被套进居中玻璃面板
+  const show = location.pathname !== '/' && !location.pathname.startsWith('/activity');
   if (!show) return null;
 
   return (

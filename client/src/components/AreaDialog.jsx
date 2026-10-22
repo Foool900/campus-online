@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { socket } from '../socket.js';
 import { useUser } from '../UserContext.jsx';
@@ -16,6 +17,7 @@ function formatTime(iso) {
 
 export default function AreaDialog({ area, onClose }) {
   const { user } = useUser();
+  const navigate = useNavigate();
   const [zone, setZone] = useState('activity');
   const [channel, setChannel] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -147,10 +149,24 @@ export default function AreaDialog({ area, onClose }) {
             <div className="chat-empty">还没有活动帖，点右下角「+」发布第一篇～</div>
           )}
           {posts.map((p) => (
-            <div key={p.id} className="post-card">
+            <div
+              key={p.id}
+              className="post-card post-card-link"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/activity/${p.id}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate(`/activity/${p.id}`);
+                }
+              }}
+              title="查看活动详情"
+            >
               <div className="post-head">
                 <span className="post-category">{p.category}</span>
                 <span className="post-title">{p.title}</span>
+                <span className="post-card-arrow">›</span>
               </div>
               {p.content && <div className="post-content">{p.content}</div>}
               <div className="post-meta">

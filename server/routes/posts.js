@@ -75,4 +75,77 @@ router.post('/channels/:channelId/posts', (req, res) => {
   res.status(201).json(post);
 });
 
+// 参与者判断：发起人视为默认参与者（未在 post_participants 里冗余存一条）
+export function isParticipant(postId, userId) {
+  const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId);
+  if (!post) return false;
+  if (post.user_id === userId) return true;
+  return !!db
+    .prepare('SELECT 1 FROM post_participants WHERE post_id = ? AND user_id = ?')
+    .get(postId, userId);
+}
+
+function listParticipants(postId) {
+  return db
+    .prepare(
+      `SELECT u.id, u.nickname, u.avatar, u.college
+       FROM post_participants pp
+       JOIN users u ON u.id = pp.user_id
+       WHERE pp.post_id = ?
+       ORDER BY pp.created_at ASC, u.id ASC`
+    )
+    .all(postId);
+}
+
+// GET /api/posts/:id —— 活动详情（含参与者 + 当前用户是否已加入）
+router.get('/posts/:id', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: '无效的活动 ID' });
+  }
+  const post = db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(id);
+  if (!post) {
+    return res.status(404).json({ error: '活动不存在' });
+  }
+
+  const participants = listParticipants(id);
+  const userId = req.query.userId ? Number(req.query.userId) : null;
+  const isJoined = Number.isInteger(userId) && isParticipant(id, userId);
+
+  res.json({
+    post,
+    participants,
+    participantCount: participants.length + 1, // 发起人 + 已加入者
+    isJoined,
+  });
+});
+
+// POST /api/posts/:id/join —— 报名/加入活动（幂等；发起人无需再入表）
+router.post('/posts/:id/join', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: '无效的活动 ID' });
+  }
+  const { userId } = req.body || {};
+  const uid = Number(userId);
+  if (!Number.isInteger(uid)) {
+    return res.status(400).json({ error: '缺少有效的 userId' });
+  }
+  const post = db.prepare('SELECT id, user_id FROM posts WHERE id = ?').get(id);
+  if (!post) return res.status(404).json({ error: '活动不存在' });
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(uid);
+  if (!user) return res.status(404).json({ error: '用户不存在' });
+
+  if (post.user_id !== uid) {
+    db.prepare('INSERT OR IGNORE INTO post_participants (post_id, user_id, created_at) VALUES (?, ?, ?)').run(
+      id,
+      uid,
+      nowIso()
+    );
+  }
+
+  const participants = listParticipants(id);
+  res.json({ participantCount: participants.length + 1, isJoined: true });
+});
+
 export default router;
