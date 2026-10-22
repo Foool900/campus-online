@@ -11,6 +11,7 @@ import AchievementsPage from './pages/AchievementsPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import ActivityDetailPage from './pages/ActivityDetailPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
+import CoOnlinePage from './pages/CoOnlinePage.jsx';
 
 const TOKEN_KEY = 'campus_token';
 
@@ -75,6 +76,7 @@ export default function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/activity/:id" element={<ActivityDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/co-online" element={<CoOnlinePage />} />
             <Route path="*" element={null} />
           </Routes>
         </Layout>

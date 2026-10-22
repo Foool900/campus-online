@@ -71,6 +71,22 @@ const API_BY_TYPE = {
     reads: (id, mid) => api.channelMessageReads(id, mid),
     markRead: (id, body) => api.markChannelRead(id, body),
   },
+  direct: {
+    list: (id) => api.conversationMessages(id),
+    send: (id, body) => api.sendConversationMessage(id, body),
+    recall: (id, mid, body) => api.recallConversationMessage(id, mid, body),
+    react: (id, mid, body) => api.reactConversationMessage(id, mid, body),
+    reads: (id, mid) => api.conversationMessageReads(id, mid),
+    markRead: (id, body) => api.markConversationRead(id, body),
+  },
+  group: {
+    list: (id) => api.conversationMessages(id),
+    send: (id, body) => api.sendConversationMessage(id, body),
+    recall: (id, mid, body) => api.recallConversationMessage(id, mid, body),
+    react: (id, mid, body) => api.reactConversationMessage(id, mid, body),
+    reads: (id, mid) => api.conversationMessageReads(id, mid),
+    markRead: (id, body) => api.markConversationRead(id, body),
+  },
 };
 
 export default function ChatChannel({
@@ -151,9 +167,8 @@ export default function ChatChannel({
       .catch(() => active && setMessages([]))
       .finally(() => active && setLoading(false));
 
-    // 加入会话房间（不含 presence，presence 由下方按 user 单独加入）
-    if (isActivity) socket.emit('join:post', { postId: conversationId });
-    else socket.emit('join:channel', { channelId: conversationId });
+    // 加入会话房间（presence 由下方按 user 单独加入）
+    socket.emit('join:conv', { conversationType, conversationId });
 
     const onNew = (payload) => {
       if (!active) return;
@@ -188,19 +203,16 @@ export default function ChatChannel({
       socket.off('message:reaction', onReaction);
       socket.off('message:recalled', onRecalled);
       socket.off('presence:update', onPresence);
-      if (isActivity) socket.emit('leave:post', { postId: conversationId });
-      else socket.emit('leave:channel', { channelId: conversationId });
+      socket.emit('leave:conv', { conversationType, conversationId });
     };
   }, [conversationType, conversationId]);
 
   // 在线成员：以 userId 加入房间（presence 追踪）
   useEffect(() => {
     if (!user?.id) return undefined;
-    if (isActivity) socket.emit('join:post', { postId: conversationId, userId: user.id });
-    else socket.emit('join:channel', { channelId: conversationId, userId: user.id });
+    socket.emit('join:conv', { conversationType, conversationId });
     return () => {
-      if (isActivity) socket.emit('leave:post', { postId: conversationId, userId: user.id });
-      else socket.emit('leave:channel', { channelId: conversationId, userId: user.id });
+      socket.emit('leave:conv', { conversationType, conversationId });
     };
   }, [conversationType, conversationId, user?.id]);
 
@@ -245,7 +257,8 @@ export default function ChatChannel({
       type: opts.type || 'text',
       replyTo: opts.replyTo || null,
       mentions: opts.mentions || [],
-      ...(isActivity ? { postId: conversationId } : { channelId: conversationId }),
+      conversationType,
+      conversationId,
     };
     const ok = (msg) => setMessages((prev) => replaceTemp(prev, clientId, msg));
     const fail = () =>

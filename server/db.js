@@ -200,6 +200,48 @@ export function initDb() {
       note         TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    -- 好友关系（含好友申请；方向性 user_id → friend_id）
+    CREATE TABLE IF NOT EXISTS friendships (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL,
+      friend_id  INTEGER NOT NULL,
+      status     TEXT    NOT NULL DEFAULT 'pending', -- pending | accepted | blocked
+      message    TEXT    NOT NULL DEFAULT '',
+      created_at TEXT    NOT NULL,
+      updated_at TEXT    NOT NULL,
+      UNIQUE(user_id, friend_id)
+    );
+
+    -- 会话（direct 私信 / group 群聊）
+    CREATE TABLE IF NOT EXISTS conversations (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      type            TEXT    NOT NULL, -- 'direct' | 'group'
+      created_at      TEXT    NOT NULL,
+      last_message_at TEXT
+    );
+
+    -- 会话成员
+    CREATE TABLE IF NOT EXISTS conversation_members (
+      conversation_id INTEGER NOT NULL,
+      user_id         INTEGER NOT NULL,
+      role            TEXT    NOT NULL DEFAULT 'member', -- 'owner' | 'member'
+      joined_at       TEXT    NOT NULL,
+      last_read_at    TEXT,
+      PRIMARY KEY (conversation_id, user_id),
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id)         REFERENCES users(id)         ON DELETE CASCADE
+    );
+
+    -- 群聊信息
+    CREATE TABLE IF NOT EXISTS groups (
+      conversation_id INTEGER PRIMARY KEY,
+      name            TEXT    NOT NULL,
+      owner_id        INTEGER NOT NULL,
+      created_at      TEXT    NOT NULL,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY (owner_id)         REFERENCES users(id)         ON DELETE CASCADE
+    );
   `);
 
   // 迁移：老库补 hidden 列（世界频道使用隐藏区域承载）

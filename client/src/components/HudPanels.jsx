@@ -1,3 +1,8 @@
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { api } from '../api.js';
+import { socket } from '../socket.js';
+
 // HUD 悬浮面板集合：小地图/头像/卡池/引导箭头/快捷栏/缩放/顶部区域
 // 定位用内联样式（absolute），视觉走 hud.css
 
@@ -40,7 +45,24 @@ export function TopLeft({ campuses, campusId, onSwitchMap, onSwitchWorld }) {
   );
 }
 
-export function TopRight({ user, onProfile, onAchievements, onLeaderboard }) {
+export function TopRight({ user, onProfile, onAchievements, onLeaderboard, onFriends }) {
+  const [unread, setUnread] = useState(0);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!user) return;
+    api.conversationUnread().then((r) => setUnread(r.total || 0)).catch(() => {});
+  }, [user?.id, location.pathname]);
+
+  useEffect(() => {
+    const onNew = (payload) => {
+      if (payload && (payload.conversationType === 'direct' || payload.conversationType === 'group') && payload.message?.userId !== user?.id) {
+        setUnread((n) => n + 1);
+      }
+    };
+    socket.on('message:new', onNew);
+    return () => socket.off('message:new', onNew);
+  }, [user?.id]);
   return (
     <div className="absolute" style={{ top: 16, right: 16, zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
       <div className="hud-panel" style={{ padding: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -63,9 +85,13 @@ export function TopRight({ user, onProfile, onAchievements, onLeaderboard }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button className="hud-btn" onClick={onProfile}>👤 用户信息</button>
         <button className="hud-btn active" onClick={onLeaderboard}>🏆 排行榜</button>
+        <button className="hud-btn friend-icon-btn" onClick={onFriends} title="co-online 好友" aria-label="好友">
+          👥
+          {unread > 0 && <span className="friend-unread">{unread > 99 ? '99+' : unread}</span>}
+        </button>
       </div>
     </div>
   );

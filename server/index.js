@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { initDb } from './db.js';
 import { seedIfEmpty, ensureWorldChannel, ensureAdmin } from './seed.js';
-import { bumpPresence, presenceList } from './presence.js';
+import { bumpPresence, presenceList, bumpGlobalPresence } from './presence.js';
 import areasRouter from './routes/areas.js';
 import channelsRouter from './routes/channels.js';
 import messagesRouter, { insertConversationMessage } from './routes/messages.js';
@@ -19,6 +19,8 @@ import worldRouter from './routes/world.js';
 import stickersRouter from './routes/stickers.js';
 import authRouter from './routes/auth.js';
 import verificationRouter from './routes/verification.js';
+import friendsRouter from './routes/friends.js';
+import conversationsRouter from './routes/conversations.js';
 import { requireAuth, getSessionUser } from './auth.js';
 
 // 初始化数据库表结构与种子数据（仅在空库时写入）
@@ -63,6 +65,8 @@ app.use('/api', achievementsRouter);
 app.use('/api', worldRouter);
 app.use('/api', stickersRouter);
 app.use('/api', verificationRouter);
+app.use('/api', friendsRouter);
+app.use('/api', conversationsRouter);
 
 // 未匹配的 /api 路由
 app.use('/api', (req, res) => {
@@ -100,9 +104,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: '服务器内部错误' });
 });
 
+function convRoom(type, id) {
+  return type === 'activity' ? `post:${id}` : type === 'chat' ? `channel:${id}` : `${type}:${id}`;
+}
+
 function broadcastPresence(type, id) {
-  const room = type === 'activity' ? `post:${id}` : `channel:${id}`;
-  io.to(room).emit('presence:update', { conversationType: type, conversationId: id, online: presenceList(type, id) });
+  io.to(convRoom(type, id)).emit('presence:update', { conversationType: type, conversationId: id, online: presenceList(type, id) });
 }
 
 function trackPresence(socket, type, id, userId) {
@@ -135,6 +142,8 @@ io.use((socket, next) => {
 
 // Socket.IO：房间名 channel:{channelId} / post:{postId}（均带在线成员 presence）
 io.on('connection', (socket) => {
+  if (socket.data.user) bumpGlobalPresence(socket.data.user.id, 1);
+
   socket.on('join:channel', ({ channelId }) => {
     const cid = Number(channelId);
     if (!Number.isInteger(cid)) return;
@@ -162,7 +171,24 @@ io.on('connection', (socket) => {
     untrackPresence(socket, 'activity', pid, socket.data.user.id);
   });
 
+  // 通用会话事件（direct / group）
+  socket.on('join:conv', ({ conversationType, conversationId }) => {
+    const type = conversationType;
+    const id = Number(conversationId);
+    if (!Number.isInteger(id) || !type) return;
+    socket.join(convRoom(type, id));
+    trackPresence(socket, type, id, socket.data.user.id);
+  });
+  socket.on('leave:conv', ({ conversationType, conversationId }) => {
+    const type = conversationType;
+    const id = Number(conversationId);
+    if (!Number.isInteger(id) || !type) return;
+    socket.leave(convRoom(type, id));
+    untrackPresence(socket, type, id, socket.data.user.id);
+  });
+
   socket.on('disconnect', () => {
+    if (socket.data.user) bumpGlobalPresence(socket.data.user.id, -1);
     const userId = socket.data.userId;
     const rooms = socket.data.rooms;
     if (rooms && Number.isInteger(userId)) {
@@ -174,26 +200,41 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('message:send', ({ channelId, postId, content, type, replyTo, mentions }, ack) => {
+  socket.on('message:send', ({ channelId, postId, conversationType, conversationId, content, type, replyTo, mentions }, ack) => {
     const userId = socket.data.user?.id;
     if (!Number.isInteger(userId)) {
       if (typeof ack === 'function') ack({ ok: false, error: '未登录' });
       return;
     }
-    const pid = postId ? Number(postId) : null;
-    const result = Number.isInteger(pid)
-      ? insertConversationMessage('activity', pid, userId, { type, content, replyTo, mentions })
-      : insertConversationMessage('chat', Number(channelId), userId, { type, content, replyTo, mentions });
+
+    // 会话维度：优先用显式 conversationType/conversationId，兼容旧的 postId/channelId
+    let convType;
+    let convId;
+    let room;
+    if (conversationType && Number.isInteger(Number(conversationId))) {
+      convType = conversationType;
+      convId = Number(conversationId);
+      room = convType === 'activity' ? `post:${convId}` : convType === 'chat' ? `channel:${convId}` : `${convType}:${convId}`;
+    } else if (Number.isInteger(Number(postId))) {
+      convType = 'activity';
+      convId = Number(postId);
+      room = `post:${convId}`;
+    } else {
+      convType = 'chat';
+      convId = Number(channelId);
+      room = `channel:${convId}`;
+    }
+
+    const result = insertConversationMessage(convType, convId, userId, { type, content, replyTo, mentions });
     if (result.error) {
       if (typeof ack === 'function') ack({ ok: false, error: result.error });
       return;
     }
-    const room = Number.isInteger(pid) ? `post:${pid}` : `channel:${Number(channelId)}`;
     io.to(room).emit('message:new', {
       conversationType: result.message.conversationType,
       conversationId: result.message.conversationId,
       channelId: Number(channelId) || null,
-      postId: pid,
+      postId: convType === 'activity' ? convId : null,
       message: result.message,
     });
     if (typeof ack === 'function') ack({ ok: true, message: result.message });

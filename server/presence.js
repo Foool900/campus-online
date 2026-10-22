@@ -42,3 +42,17 @@ export function onlineCount(type, id) {
   const m = onlineByRoom.get(`${type}:${id}`);
   return m ? m.size : 0;
 }
+
+// 全局在线集合（按用户，跨会话；用于好友在线绿点）
+const onlineUsers = new Map(); // userId -> 连接数
+
+export function bumpGlobalPresence(userId, delta) {
+  if (!Number.isInteger(userId)) return;
+  const next = (onlineUsers.get(userId) || 0) + delta;
+  if (next <= 0) onlineUsers.delete(userId);
+  else onlineUsers.set(userId, next);
+}
+
+export function isOnlineGlobal(userId) {
+  return onlineUsers.has(userId);
+}

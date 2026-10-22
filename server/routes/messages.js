@@ -98,6 +98,14 @@ function withInteractions(rows) {
   });
 }
 
+// 世界频道 id 作为 direct/group 消息的 channel_id 占位（满足 NOT NULL 外键，真实维度是 conversation_type/id）
+export function worldChannelId() {
+  const area = db.prepare("SELECT id FROM areas WHERE slug = 'world'").get();
+  if (!area) return 0;
+  const ch = db.prepare('SELECT id FROM channels WHERE area_id = ? ORDER BY id ASC LIMIT 1').get(area.id);
+  return ch ? ch.id : 0;
+}
+
 // 会话内发送消息（统一）：text / sticker，带 replyTo / mentions
 export function insertConversationMessage(type, id, userId, payload) {
   const uid = Number(userId);
@@ -124,6 +132,13 @@ export function insertConversationMessage(type, id, userId, payload) {
     const channel = db.prepare('SELECT id FROM channels WHERE id = ?').get(id);
     if (!channel) return { error: '频道不存在', status: 404 };
     channelId = id;
+    postId = null;
+  } else if (type === 'direct' || type === 'group') {
+    const member = db
+      .prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?')
+      .get(id, uid);
+    if (!member) return { error: '无权在该会话发言', status: 403 };
+    channelId = worldChannelId();
     postId = null;
   } else {
     return { error: '无效的会话类型', status: 400 };
@@ -166,7 +181,7 @@ export function insertPostMessage(postId, userId, payload) {
   return insertConversationMessage('activity', postId, userId, payload);
 }
 
-function listConversationMessages(type, id) {
+export function listConversationMessages(type, id) {
   const rows = db
     .prepare(`${SELECT_MESSAGE} WHERE m.conversation_type = ? AND m.conversation_id = ? ORDER BY m.id ASC`)
     .all(type, id);
@@ -180,7 +195,7 @@ function getConversationMessage(type, id, messageId) {
 }
 
 // 撤回：activity 管理员可撤任意；自己 2 分钟内可撤（chat 无管理员）
-function recallConversationMessage(type, id, messageId, userId) {
+export function recallConversationMessage(type, id, messageId, userId) {
   const msg = getConversationMessage(type, id, messageId);
   if (!msg) return { error: '消息不存在', status: 404 };
   if (msg.type === 'recalled') return { error: '消息已撤回', status: 409 };
@@ -190,6 +205,9 @@ function recallConversationMessage(type, id, messageId, userId) {
   if (type === 'activity') {
     const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(id);
     isAdmin = post.user_id === userId;
+  } else if (type === 'group') {
+    const g = db.prepare('SELECT owner_id FROM groups WHERE conversation_id = ?').get(id);
+    isAdmin = !!(g && g.owner_id === userId);
   }
   const isOwn = msg.user_id === userId;
 
@@ -212,7 +230,7 @@ function recallConversationMessage(type, id, messageId, userId) {
 }
 
 // 表情回应：activity 需参与者且非终态；chat 开放
-function reactConversationMessage(type, id, messageId, userId, emoji) {
+export function reactConversationMessage(type, id, messageId, userId, emoji) {
   const msg = getConversationMessage(type, id, messageId);
   if (!msg) return { error: '消息不存在', status: 404 };
   if (msg.type === 'recalled' || msg.type === 'system') return { error: '该消息不可回应', status: 403 };
@@ -223,6 +241,11 @@ function reactConversationMessage(type, id, messageId, userId, emoji) {
       return { error: '活动已结束或取消，全员只读', status: 403 };
     }
     if (!isParticipant(id, userId)) return { error: '加入活动后可参与互动', status: 403 };
+  } else if (type === 'direct' || type === 'group') {
+    const member = db
+      .prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?')
+      .get(id, userId);
+    if (!member) return { error: '无权在该会话操作', status: 403 };
   }
 
   const e = typeof emoji === 'string' ? emoji.trim() : '';
@@ -252,9 +275,15 @@ function reactConversationMessage(type, id, messageId, userId, emoji) {
   return { messageId, reactions };
 }
 
-function readConversation(type, id, userId, upTo) {
+export function readConversation(type, id, userId, upTo) {
   if (type === 'activity' && !isParticipant(id, userId)) {
     return { error: '加入活动后可标记已读', status: 403 };
+  }
+  if (type === 'direct' || type === 'group') {
+    const member = db
+      .prepare('SELECT 1 FROM conversation_members WHERE conversation_id = ? AND user_id = ?')
+      .get(id, userId);
+    if (!member) return { error: '无权在该会话操作', status: 403 };
   }
   db.prepare(
     `INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at)
@@ -263,7 +292,7 @@ function readConversation(type, id, userId, upTo) {
   return { ok: true };
 }
 
-function listReads(type, id, messageId) {
+export function listReads(type, id, messageId) {
   const msg = getConversationMessage(type, id, messageId);
   if (!msg) return null;
   return db

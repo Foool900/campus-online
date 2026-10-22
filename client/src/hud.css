@@ -1268,3 +1268,56 @@ input, select, textarea { color: var(--text); }
 .admin-add { display: flex; gap: 8px; margin-top: 10px; }
 .admin-add input { flex: 1; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; color: #fff; }
 .admin-add input:focus { border-color: rgba(56, 189, 248, 0.6); }
+
+/* 右上角好友图标 / co-online */
+.friend-icon-btn { position: relative; width: 34px; height: 34px; padding: 0; border-radius: 50%; font-size: 16px; }
+.friend-unread { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: #f87171; color: #fff; font-size: 10px; line-height: 16px; text-align: center; box-shadow: 0 0 6px rgba(248, 113, 113, 0.8); }
+.co-online-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+
+/* co-online 三栏布局（桌面）/ 两页（手机） */
+.btn-sm { padding: 4px 10px; font-size: 12px; min-height: 30px; }
+.co-online-layout { flex: 1; min-height: 0; display: flex; }
+.co-online-list { width: 250px; flex-shrink: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow-y: auto; padding: 10px; gap: 8px; }
+.co-online-chat { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.co-online-friends { width: 230px; flex-shrink: 0; border-left: 1px solid var(--line); overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.co-online-search input { width: 100%; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; color: #fff; }
+.co-online-search input:focus { border-color: rgba(56, 189, 248, 0.6); }
+.co-online-section { display: flex; flex-direction: column; gap: 4px; }
+.co-online-section-title { font-size: 12px; color: var(--muted); padding: 4px 2px; }
+.co-online-search-results { display: flex; flex-direction: column; gap: 4px; }
+.co-online-user { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 8px; }
+.co-online-user:hover { background: rgba(255, 255, 255, 0.04); }
+.co-online-avatar { position: relative; width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.08); font-size: 18px; flex-shrink: 0; }
+.co-online-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; background: #34d399; border: 2px solid #0b1016; }
+.co-online-name { flex: 1; min-width: 0; color: rgba(255, 255, 255, 0.9); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.co-online-college { font-size: 11px; color: var(--muted); }
+.co-online-muted { font-size: 11px; color: var(--muted); }
+.co-online-conv { display: flex; align-items: center; gap: 8px; padding: 8px; border: none; background: none; border-radius: 8px; cursor: pointer; text-align: left; width: 100%; }
+.co-online-conv:hover { background: rgba(255, 255, 255, 0.05); }
+.co-online-conv.active { background: rgba(56, 189, 248, 0.12); }
+.co-online-conv-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.co-online-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.co-online-online { font-size: 10px; color: #6ee7b7; flex-shrink: 0; }
+.co-online-last { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.co-online-unread { background: #f87171; color: #fff; font-size: 11px; min-width: 18px; height: 18px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; flex-shrink: 0; }
+.co-online-chat-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.co-online-back { border: none; background: none; color: #fff; font-size: 20px; cursor: pointer; padding: 0 6px; }
+.co-online-group { font-size: 11px; color: var(--muted); padding: 2px; }
+.co-online-remove { border: none; background: none; color: #fca5a5; font-size: 15px; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
+.co-online-error { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: rgba(120, 22, 22, 0.94); color: #fff; padding: 8px 16px; border-radius: 8px; z-index: 80; }
+.co-online-msg { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: rgba(15, 20, 30, 0.94); color: #fff; padding: 8px 16px; border-radius: 8px; z-index: 80; }
+.co-online-pick-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.co-online-pick { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; cursor: pointer; font-size: 13px; color: rgba(255, 255, 255, 0.9); }
+.co-online-pick:hover { background: rgba(255, 255, 255, 0.05); }
+.btn.danger { background: rgba(248, 113, 113, 0.16); color: #fca5a5; border: 1px solid rgba(248, 113, 113, 0.35); }
+.btn.danger:hover { background: rgba(248, 113, 113, 0.25); }
+
+@media (max-width: 932px) {
+  .co-online-layout { flex-direction: column; }
+  .co-online-list { width: 100%; flex: 1; min-height: 0; border-right: none; }
+  .co-online-friends { width: 100%; border-left: none; max-height: 42%; flex-shrink: 0; }
+  .co-online-chat { display: none; }
+  .co-online-layout.show-chat .co-online-list,
+  .co-online-layout.show-chat .co-online-friends { display: none; }
+  .co-online-layout.show-chat .co-online-chat { display: flex; flex: 1; min-height: 0; }
+}

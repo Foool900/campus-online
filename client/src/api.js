@@ -51,6 +51,34 @@ export const api = {
   adminList: () => request('/api/admin'),
   promoteAdmin: (body) => request('/api/admin', { method: 'POST', body: JSON.stringify(body) }),
   removeAdmin: (id) => request(`/api/admin/${id}`, { method: 'DELETE' }),
+  searchUsers: (q) => request(`/api/friends/search?q=${encodeURIComponent(q)}`),
+  friendRequest: (friendId, message) =>
+    request('/api/friends/request', { method: 'POST', body: JSON.stringify({ friendId, message }) }),
+  friendRequests: () => request('/api/friends/requests'),
+  acceptFriendRequest: (id) => request(`/api/friends/requests/${id}/accept`, { method: 'POST' }),
+  rejectFriendRequest: (id) => request(`/api/friends/requests/${id}/reject`, { method: 'POST' }),
+  friends: () => request('/api/friends'),
+  removeFriend: (id) => request(`/api/friends/${id}`, { method: 'DELETE' }),
+  conversations: () => request('/api/conversations'),
+  createDirectConversation: (friendId) =>
+    request('/api/conversations/direct', { method: 'POST', body: JSON.stringify({ friendId }) }),
+  conversation: (id) => request(`/api/conversations/${id}`),
+  conversationMessages: (id) => request(`/api/conversations/${id}/messages`),
+  sendConversationMessage: (id, body) =>
+    request(`/api/conversations/${id}/messages`, { method: 'POST', body: JSON.stringify(body) }),
+  recallConversationMessage: (id, mid, body) =>
+    request(`/api/conversations/${id}/messages/${mid}/recall`, { method: 'POST', body: JSON.stringify(body) }),
+  reactConversationMessage: (id, mid, body) =>
+    request(`/api/conversations/${id}/messages/${mid}/react`, { method: 'POST', body: JSON.stringify(body) }),
+  conversationMessageReads: (id, mid) => request(`/api/conversations/${id}/messages/${mid}/reads`),
+  markConversationRead: (id, body) =>
+    request(`/api/conversations/${id}/read`, { method: 'POST', body: JSON.stringify(body) }),
+  createGroup: (body) => request('/api/conversations/group', { method: 'POST', body: JSON.stringify(body) }),
+  addGroupMembers: (id, body) => request(`/api/conversations/${id}/members`, { method: 'POST', body: JSON.stringify(body) }),
+  removeGroupMember: (id, userId) => request(`/api/conversations/${id}/members/${userId}`, { method: 'DELETE' }),
+  renameGroup: (id, body) => request(`/api/conversations/${id}/name`, { method: 'PATCH', body: JSON.stringify(body) }),
+  dissolveGroup: (id) => request(`/api/conversations/${id}`, { method: 'DELETE' }),
+  conversationUnread: () => request('/api/conversations/unread'),
   campuses: () => request('/api/campuses'),
   areas: (campusId) =>
     request('/api/areas' + (campusId ? `?campusId=${encodeURIComponent(campusId)}` : '')),

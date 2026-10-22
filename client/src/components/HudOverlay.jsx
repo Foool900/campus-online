@@ -8,8 +8,8 @@ export default function HudOverlay({ children }) {
   const show = location.pathname !== '/';
   if (!show) return null;
 
-  // 活动详情页自带全屏覆盖层与返回按钮，这里原样渲染，不套居中玻璃面板
-  if (location.pathname.startsWith('/activity')) {
+  // 活动详情页 / co-online 自带全屏覆盖层与返回按钮，这里原样渲染，不套居中玻璃面板
+  if (location.pathname.startsWith('/activity') || location.pathname.startsWith('/co-online')) {
     return children;
   }
 
