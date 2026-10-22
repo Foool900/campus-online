@@ -9,7 +9,7 @@ import { seedIfEmpty, ensureWorldChannel } from './seed.js';
 import { bumpPresence, presenceList } from './presence.js';
 import areasRouter from './routes/areas.js';
 import channelsRouter from './routes/channels.js';
-import messagesRouter, { insertMessage, insertPostMessage } from './routes/messages.js';
+import messagesRouter, { insertConversationMessage } from './routes/messages.js';
 import todosRouter from './routes/todos.js';
 import usersRouter from './routes/users.js';
 import campusesRouter from './routes/campuses.js';
@@ -158,8 +158,8 @@ io.on('connection', (socket) => {
   socket.on('message:send', ({ channelId, postId, userId, content, type, replyTo, mentions }, ack) => {
     const pid = postId ? Number(postId) : null;
     const result = Number.isInteger(pid)
-      ? insertPostMessage(pid, userId, { type, content, replyTo, mentions })
-      : insertMessage(channelId, userId, content);
+      ? insertConversationMessage('activity', pid, userId, { type, content, replyTo, mentions })
+      : insertConversationMessage('chat', Number(channelId), userId, { type, content, replyTo, mentions });
     if (result.error) {
       if (typeof ack === 'function') ack({ ok: false, error: result.error });
       return;
