@@ -1074,6 +1074,31 @@ input, select, textarea { color: var(--text); }
   background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); color: #fff; border-radius: 8px; padding: 8px 10px;
 }
 
+/* 任务帮助 */
+.task-help-btn {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06);
+  color: #fff; font-size: 14px; line-height: 1; cursor: pointer;
+}
+.task-help-btn:hover { background: rgba(255, 255, 255, 0.14); }
+.task-help-card {
+  width: min(560px, 92vw);
+  max-height: 84vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(24, 30, 43, 0.98), rgba(13, 17, 26, 0.98));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 20px;
+  color: var(--text);
+}
+.task-help-head { display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+.task-help-close { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.06); color: #fff; font-size: 18px; line-height: 1; cursor: pointer; }
+.task-help-close:hover { background: rgba(255,255,255,.14); }
+.task-help-body h3 { margin: 14px 0 6px; font-size: 14px; color: #7dd3fc; }
+.task-help-body h3:first-child { margin-top: 0; }
+.task-help-body ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: rgba(255,255,255,0.86); }
+.task-help-body b { color: #fff; }
+
 /* 管理员标识 / 管理面板 */
 .act-admin-badge {
   font-size: 10px;

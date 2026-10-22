@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
+import TaskHelpModal from '../components/TaskHelpModal.jsx';
 
 const STATUS_LABELS = {
   todo: '待办',
@@ -43,6 +44,7 @@ export default function TasksPage() {
   const [toast, setToast] = useState('');
   const [wallet, setWallet] = useState(null);
   const [expConfig, setExpConfig] = useState(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // 发布表单
   const [pubOpen, setPubOpen] = useState(false);
@@ -118,7 +120,10 @@ export default function TasksPage() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>📋 任务中心</h1>
+        <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          📋 任务中心
+          <button className="task-help-btn" onClick={() => setHelpOpen(true)} title="帮助" aria-label="帮助">❔</button>
+        </h1>
         <p>发布公开任务悬赏经验，或记录你的私密备忘</p>
       </div>
 
@@ -235,6 +240,7 @@ export default function TasksPage() {
       </div>
 
       {toast && <div className="toast">{toast}</div>}
+      {helpOpen && <TaskHelpModal onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }
