@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 
 // 各校区真实底图信息（宽高与 public/maps 下的图片一致）
 const MAP = {
-  minglun: { src: '/maps/minglun.jpg', w: 1600, h: 2749 },
-  jinming: { src: '/maps/jinming.jpg', w: 920, h: 1596 },
+  minglun: { src: '/maps/minglun.jpg', w: 1280, h: 2201 },
+  jinming: { src: '/maps/jinming.jpg', w: 1280, h: 2213 },
 };
 
 // 种子数据里的坐标统一使用 1000x1900 逻辑空间，渲染时缩放到底图实际尺寸
