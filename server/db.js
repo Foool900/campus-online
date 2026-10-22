@@ -56,17 +56,19 @@ export function initDb() {
     );
 
     CREATE TABLE IF NOT EXISTS messages (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      channel_id  INTEGER NOT NULL,
-      user_id     INTEGER NOT NULL,
-      post_id     INTEGER,
-      type        TEXT    NOT NULL DEFAULT 'text',
-      content     TEXT    NOT NULL,
-      reply_to    TEXT,
-      mentions    TEXT,
-      recalled_at TEXT,
-      recalled_by INTEGER,
-      created_at  TEXT    NOT NULL,
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel_id        INTEGER NOT NULL,
+      user_id           INTEGER NOT NULL,
+      post_id           INTEGER,
+      conversation_type TEXT,
+      conversation_id   INTEGER,
+      type              TEXT    NOT NULL DEFAULT 'text',
+      content           TEXT    NOT NULL,
+      reply_to          TEXT,
+      mentions          TEXT,
+      recalled_at       TEXT,
+      recalled_by       INTEGER,
+      created_at        TEXT    NOT NULL,
       FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
     );
@@ -196,6 +198,15 @@ export function initDb() {
   if (!msgCols.includes('mentions')) db.exec('ALTER TABLE messages ADD COLUMN mentions TEXT;');
   if (!msgCols.includes('recalled_at')) db.exec('ALTER TABLE messages ADD COLUMN recalled_at TEXT;');
   if (!msgCols.includes('recalled_by')) db.exec('ALTER TABLE messages ADD COLUMN recalled_by INTEGER;');
+
+  // 迁移：messages 补会话维度列（conversation_type: activity/chat, conversation_id）
+  if (!msgCols.includes('conversation_type')) db.exec('ALTER TABLE messages ADD COLUMN conversation_type TEXT;');
+  if (!msgCols.includes('conversation_id')) db.exec('ALTER TABLE messages ADD COLUMN conversation_id INTEGER;');
+  // 回填（幂等，每次启动兜底；只填 NULL 行，不覆盖已有值）：activity → post_id；chat → channel_id
+  db.exec(`
+    UPDATE messages SET conversation_type = 'activity', conversation_id = post_id WHERE post_id IS NOT NULL AND conversation_type IS NULL;
+    UPDATE messages SET conversation_type = 'chat',     conversation_id = channel_id WHERE post_id IS NULL AND conversation_type IS NULL;
+  `);
 
   // 迁移：posts 补 status 列（活动状态机）
   const postCols = db.prepare('PRAGMA table_info(posts)').all().map((c) => c.name);

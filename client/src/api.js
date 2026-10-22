@@ -28,6 +28,13 @@ export const api = {
   messages: (channelId) => request(`/api/channels/${channelId}/messages`),
   sendMessage: (channelId, body) =>
     request(`/api/channels/${channelId}/messages`, { method: 'POST', body: JSON.stringify(body) }),
+  recallChannelMessage: (channelId, messageId, body) =>
+    request(`/api/channels/${channelId}/messages/${messageId}/recall`, { method: 'POST', body: JSON.stringify(body) }),
+  reactChannelMessage: (channelId, messageId, body) =>
+    request(`/api/channels/${channelId}/messages/${messageId}/react`, { method: 'POST', body: JSON.stringify(body) }),
+  channelMessageReads: (channelId, messageId) => request(`/api/channels/${channelId}/messages/${messageId}/reads`),
+  markChannelRead: (channelId, body) =>
+    request(`/api/channels/${channelId}/read`, { method: 'POST', body: JSON.stringify(body) }),
   posts: (channelId, userId) =>
     request(`/api/channels/${channelId}/posts` + (userId ? `?userId=${encodeURIComponent(userId)}` : '')),
   createPost: (channelId, body) =>

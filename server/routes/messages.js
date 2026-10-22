@@ -4,83 +4,26 @@ import { isParticipant } from './posts.js';
 
 const router = Router();
 
+/* ============================================================
+   统一消息模型：conversation_type = 'activity' | 'chat'
+   - activity：conversation_id = 活动 id（post_id）
+   - chat：    conversation_id = 频道 id（channel_id；含区域频道与世界频道）
+   查询 / 推送 / 互动全部按 (conversation_type, conversation_id) 做会话隔离。
+   ============================================================ */
 const SELECT_MESSAGE = `
   SELECT m.id,
-         m.channel_id AS channelId,
-         m.user_id    AS userId,
-         m.content,
-         m.created_at AS createdAt,
-         u.nickname,
-         u.avatar,
-         u.college
-  FROM messages m
-  JOIN users u ON u.id = m.user_id
-`;
-
-// REST 与 Socket.IO 共用的发送逻辑：校验并入库，返回 { error, status } 或 { message }
-export function insertMessage(channelId, userId, content) {
-  const cid = Number(channelId);
-  if (!Number.isInteger(cid)) return { error: '无效的频道 ID', status: 400 };
-  const uid = Number(userId);
-  if (!Number.isInteger(uid)) return { error: '缺少有效的 userId', status: 400 };
-
-  const text = typeof content === 'string' ? content.trim() : '';
-  if (!text) return { error: '消息内容不能为空', status: 400 };
-  if (text.length > 500) return { error: '消息内容过长（最多 500 字）', status: 400 };
-
-  const channel = db.prepare('SELECT id FROM channels WHERE id = ?').get(cid);
-  if (!channel) return { error: '频道不存在', status: 404 };
-  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(uid);
-  if (!user) return { error: '用户不存在', status: 404 };
-
-  const info = db
-    .prepare('INSERT INTO messages (channel_id, user_id, content, created_at) VALUES (?, ?, ?, ?)')
-    .run(cid, uid, text, nowIso());
-
-  const message = db.prepare(`${SELECT_MESSAGE} WHERE m.id = ?`).get(info.lastInsertRowid);
-  return { message };
-}
-
-// GET /api/channels/:channelId/messages —— 频道历史消息
-router.get('/channels/:channelId/messages', (req, res) => {
-  const channelId = Number(req.params.channelId);
-  if (!Number.isInteger(channelId)) {
-    return res.status(400).json({ error: '无效的频道 ID' });
-  }
-  const channel = db.prepare('SELECT id FROM channels WHERE id = ?').get(channelId);
-  if (!channel) {
-    return res.status(404).json({ error: '频道不存在' });
-  }
-
-  const messages = db.prepare(`${SELECT_MESSAGE} WHERE m.channel_id = ? ORDER BY m.id ASC`).all(channelId);
-  res.json(messages);
-});
-
-// POST /api/channels/:channelId/messages —— 发送消息（内容原样入库，前端用 React 文本节点安全渲染）
-router.post('/channels/:channelId/messages', (req, res) => {
-  const { userId, content } = req.body || {};
-  const result = insertMessage(req.params.channelId, userId, content);
-  if (result.error) {
-    return res.status(result.status).json({ error: result.error });
-  }
-  res.status(201).json(result.message);
-});
-
-/* ============================================================
-   活动讨论区消息（带回复 / 提及 / 回应 / 已读 / 撤回）
-   ============================================================ */
-const SELECT_POST_MESSAGE = `
-  SELECT m.id,
-         m.channel_id  AS channelId,
-         m.post_id     AS postId,
-         m.user_id     AS userId,
+         m.channel_id          AS channelId,
+         m.post_id             AS postId,
+         m.conversation_type   AS conversationType,
+         m.conversation_id     AS conversationId,
+         m.user_id             AS userId,
          m.type,
          m.content,
          m.reply_to,
          m.mentions,
          m.recalled_at,
          m.recalled_by,
-         m.created_at  AS createdAt,
+         m.created_at          AS createdAt,
          u.nickname,
          u.avatar,
          u.college
@@ -104,10 +47,11 @@ function mapMessage(row) {
     id: row.id,
     channelId: row.channelId,
     postId: row.postId,
+    conversationType: row.conversationType,
+    conversationId: row.conversationId,
     userId: row.userId,
     type: row.type,
-    // 撤回后不下发原文
-    content: recalled ? '' : row.content,
+    content: recalled ? '' : row.content, // 撤回后不下发原文
     replyTo: recalled ? null : parseJson(row.reply_to),
     mentions: recalled ? [] : parseJson(row.mentions) || [],
     createdAt: row.createdAt,
@@ -153,28 +97,37 @@ function withInteractions(rows) {
   });
 }
 
-// 活动讨论区：发送消息（text / sticker；仅参与者可发；终态只读）
-// payload: { type, content, replyTo, mentions }
-export function insertPostMessage(postId, userId, payload) {
-  const pid = Number(postId);
-  if (!Number.isInteger(pid)) return { error: '无效的活动 ID', status: 400 };
+// 会话内发送消息（统一）：text / sticker，带 replyTo / mentions
+export function insertConversationMessage(type, id, userId, payload) {
   const uid = Number(userId);
   if (!Number.isInteger(uid)) return { error: '缺少有效的 userId', status: 400 };
 
   const p = payload && typeof payload === 'object' ? payload : {};
-  const type = p.type === 'sticker' ? 'sticker' : 'text';
+  const msgType = p.type === 'sticker' ? 'sticker' : 'text';
   const text = typeof p.content === 'string' ? p.content.trim() : '';
   if (!text) return { error: '消息内容不能为空', status: 400 };
   if (text.length > 2000) return { error: '消息内容过长', status: 400 };
 
-  const post = db.prepare('SELECT id, channel_id, status FROM posts WHERE id = ?').get(pid);
-  if (!post) return { error: '活动不存在', status: 404 };
-  if (post.status === 'ended' || post.status === 'cancelled') {
-    return { error: '活动已结束或取消，全员只读', status: 403 };
+  let channelId;
+  let postId;
+  if (type === 'activity') {
+    const post = db.prepare('SELECT id, channel_id, status FROM posts WHERE id = ?').get(id);
+    if (!post) return { error: '活动不存在', status: 404 };
+    if (post.status === 'ended' || post.status === 'cancelled') {
+      return { error: '活动已结束或取消，全员只读', status: 403 };
+    }
+    if (!isParticipant(id, uid)) return { error: '加入活动后才能发言', status: 403 };
+    channelId = post.channel_id;
+    postId = id;
+  } else if (type === 'chat') {
+    const channel = db.prepare('SELECT id FROM channels WHERE id = ?').get(id);
+    if (!channel) return { error: '频道不存在', status: 404 };
+    channelId = id;
+    postId = null;
+  } else {
+    return { error: '无效的会话类型', status: 400 };
   }
-  if (!isParticipant(pid, uid)) return { error: '加入活动后才能发言', status: 403 };
 
-  // 序列化回复引用（做基础清洗）
   const replyTo = p.replyTo && typeof p.replyTo === 'object' ? p.replyTo : null;
   const replyJson = replyTo
     ? JSON.stringify({
@@ -185,7 +138,6 @@ export function insertPostMessage(postId, userId, payload) {
       })
     : null;
 
-  // 序列化提及列表
   const mentions = (Array.isArray(p.mentions) ? p.mentions : [])
     .filter((m) => m && m.userId)
     .slice(0, 20)
@@ -194,114 +146,97 @@ export function insertPostMessage(postId, userId, payload) {
 
   const info = db
     .prepare(
-      'INSERT INTO messages (channel_id, user_id, post_id, type, content, reply_to, mentions, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      `INSERT INTO messages (channel_id, user_id, post_id, conversation_type, conversation_id, type, content, reply_to, mentions, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(post.channel_id, uid, pid, type, text, replyJson, mentionsJson, nowIso());
+    .run(channelId, uid, postId, type, id, msgType, text, replyJson, mentionsJson, nowIso());
 
-  const message = withInteractions([db.prepare(`${SELECT_POST_MESSAGE} WHERE m.id = ?`).get(info.lastInsertRowid)])[0];
+  const message = withInteractions([db.prepare(`${SELECT_MESSAGE} WHERE m.id = ?`).get(info.lastInsertRowid)])[0];
   return { message };
 }
 
-// GET /api/posts/:id/messages —— 活动讨论区历史消息（旧在上、新在下）
-router.get('/posts/:id/messages', (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
-    return res.status(400).json({ error: '无效的活动 ID' });
-  }
-  const post = db.prepare('SELECT id FROM posts WHERE id = ?').get(id);
-  if (!post) {
-    return res.status(404).json({ error: '活动不存在' });
-  }
-  const rows = db.prepare(`${SELECT_POST_MESSAGE} WHERE m.post_id = ? ORDER BY m.id ASC`).all(id);
-  res.json(withInteractions(rows));
-});
+// 兼容旧调用方（Socket.IO 等）：聊天/世界频道
+export function insertMessage(channelId, userId, content) {
+  return insertConversationMessage('chat', channelId, userId, { content });
+}
 
-// POST /api/posts/:id/messages —— 发送讨论区消息
-router.post('/posts/:id/messages', (req, res) => {
-  const result = insertPostMessage(req.params.id, req.body?.userId, req.body || {});
-  if (result.error) {
-    return res.status(result.status).json({ error: result.error });
-  }
-  res.status(201).json(result.message);
-});
+// 兼容旧调用方（Socket.IO 等）：活动讨论区
+export function insertPostMessage(postId, userId, payload) {
+  return insertConversationMessage('activity', postId, userId, payload);
+}
 
-// POST /api/posts/:id/messages/:messageId/recall —— 撤回
-router.post('/posts/:id/messages/:messageId/recall', (req, res) => {
-  const postId = Number(req.params.id);
-  const messageId = Number(req.params.messageId);
-  const { userId } = req.body || {};
-  const uid = Number(userId);
-  if (!Number.isInteger(postId) || !Number.isInteger(messageId)) {
-    return res.status(400).json({ error: '无效的 ID' });
-  }
-  if (!Number.isInteger(uid)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
-  const msg = db.prepare('SELECT id, user_id, type, created_at FROM messages WHERE id = ? AND post_id = ?').get(messageId, postId);
-  if (!msg) return res.status(404).json({ error: '消息不存在' });
-  if (msg.type === 'recalled') return res.status(409).json({ error: '消息已撤回' });
-  if (msg.type === 'system') return res.status(403).json({ error: '系统消息不可撤回' });
+function listConversationMessages(type, id) {
+  const rows = db
+    .prepare(`${SELECT_MESSAGE} WHERE m.conversation_type = ? AND m.conversation_id = ? ORDER BY m.id ASC`)
+    .all(type, id);
+  return withInteractions(rows);
+}
 
-  const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId);
-  const isAdmin = post.user_id === uid;
-  const isOwn = msg.user_id === uid;
+function getConversationMessage(type, id, messageId) {
+  return db
+    .prepare('SELECT * FROM messages WHERE id = ? AND conversation_type = ? AND conversation_id = ?')
+    .get(messageId, type, id);
+}
+
+// 撤回：activity 管理员可撤任意；自己 2 分钟内可撤（chat 无管理员）
+function recallConversationMessage(type, id, messageId, userId) {
+  const msg = getConversationMessage(type, id, messageId);
+  if (!msg) return { error: '消息不存在', status: 404 };
+  if (msg.type === 'recalled') return { error: '消息已撤回', status: 409 };
+  if (msg.type === 'system') return { error: '系统消息不可撤回', status: 403 };
+
+  let isAdmin = false;
+  if (type === 'activity') {
+    const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(id);
+    isAdmin = post.user_id === userId;
+  }
+  const isOwn = msg.user_id === userId;
 
   if (isAdmin) {
     // 管理员可撤任意消息，不限时
   } else if (isOwn) {
-    const age = Date.now() - new Date(msg.created_at).getTime();
-    if (age > 2 * 60 * 1000) return res.status(403).json({ error: '超过 2 分钟，不可撤回' });
+    if (Date.now() - new Date(msg.created_at).getTime() > 2 * 60 * 1000) {
+      return { error: '超过 2 分钟，不可撤回', status: 403 };
+    }
   } else {
-    return res.status(403).json({ error: '无权撤回他人消息' });
+    return { error: '无权撤回他人消息', status: 403 };
   }
 
   db.prepare("UPDATE messages SET type = 'recalled', recalled_at = ?, recalled_by = ? WHERE id = ?").run(
     nowIso(),
-    uid,
+    userId,
     messageId
   );
+  return { messageId, recalled: true };
+}
 
-  const io = req.app.get('io');
-  if (io) io.to(`post:${postId}`).emit('message:recalled', { postId, messageId, recalledBy: uid });
+// 表情回应：activity 需参与者且非终态；chat 开放
+function reactConversationMessage(type, id, messageId, userId, emoji) {
+  const msg = getConversationMessage(type, id, messageId);
+  if (!msg) return { error: '消息不存在', status: 404 };
+  if (msg.type === 'recalled' || msg.type === 'system') return { error: '该消息不可回应', status: 403 };
 
-  res.json({ messageId, recalled: true });
-});
-
-// POST /api/posts/:id/messages/:messageId/react —— 表情回应（toggle）
-router.post('/posts/:id/messages/:messageId/react', (req, res) => {
-  const postId = Number(req.params.id);
-  const messageId = Number(req.params.messageId);
-  const { userId, emoji } = req.body || {};
-  const uid = Number(userId);
-  if (!Number.isInteger(postId) || !Number.isInteger(messageId)) {
-    return res.status(400).json({ error: '无效的 ID' });
+  if (type === 'activity') {
+    const post = db.prepare('SELECT status FROM posts WHERE id = ?').get(id);
+    if (post.status === 'ended' || post.status === 'cancelled') {
+      return { error: '活动已结束或取消，全员只读', status: 403 };
+    }
+    if (!isParticipant(id, userId)) return { error: '加入活动后可参与互动', status: 403 };
   }
-  if (!Number.isInteger(uid)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
-  const msg = db.prepare('SELECT id, type FROM messages WHERE id = ? AND post_id = ?').get(messageId, postId);
-  if (!msg) return res.status(404).json({ error: '消息不存在' });
-  if (msg.type === 'recalled' || msg.type === 'system') return res.status(403).json({ error: '该消息不可回应' });
-
-  const post = db.prepare('SELECT status FROM posts WHERE id = ?').get(postId);
-  if (post.status === 'ended' || post.status === 'cancelled') {
-    return res.status(403).json({ error: '活动已结束或取消，全员只读' });
-  }
-  if (!isParticipant(postId, uid)) return res.status(403).json({ error: '加入活动后可参与互动' });
 
   const e = typeof emoji === 'string' ? emoji.trim() : '';
-  if (!e || e.length > 8) return res.status(400).json({ error: '无效的表情' });
+  if (!e || e.length > 8) return { error: '无效的表情', status: 400 };
 
   const existing = db
     .prepare('SELECT 1 FROM message_reactions WHERE message_id = ? AND emoji = ? AND user_id = ?')
-    .get(messageId, e, uid);
+    .get(messageId, e, userId);
   if (existing) {
-    db.prepare('DELETE FROM message_reactions WHERE message_id = ? AND emoji = ? AND user_id = ?').run(messageId, e, uid);
+    db.prepare('DELETE FROM message_reactions WHERE message_id = ? AND emoji = ? AND user_id = ?').run(messageId, e, userId);
   } else {
     db.prepare('INSERT INTO message_reactions (message_id, emoji, user_id, created_at) VALUES (?, ?, ?, ?)').run(
       messageId,
       e,
-      uid,
+      userId,
       nowIso()
     );
   }
@@ -313,50 +248,122 @@ router.post('/posts/:id/messages/:messageId/react', (req, res) => {
       if (!reactions[r.emoji]) reactions[r.emoji] = [];
       reactions[r.emoji].push(r.user_id);
     });
+  return { messageId, reactions };
+}
 
-  const io = req.app.get('io');
-  if (io) io.to(`post:${postId}`).emit('message:reaction', { postId, messageId, reactions });
-
-  res.json({ messageId, reactions });
-});
-
-// GET /api/posts/:id/messages/:messageId/reads —— 已读名单（懒加载）
-router.get('/posts/:id/messages/:messageId/reads', (req, res) => {
-  const postId = Number(req.params.id);
-  const messageId = Number(req.params.messageId);
-  if (!Number.isInteger(postId) || !Number.isInteger(messageId)) {
-    return res.status(400).json({ error: '无效的 ID' });
+function readConversation(type, id, userId, upTo) {
+  if (type === 'activity' && !isParticipant(id, userId)) {
+    return { error: '加入活动后可标记已读', status: 403 };
   }
-  const msg = db.prepare('SELECT id FROM messages WHERE id = ? AND post_id = ?').get(messageId, postId);
-  if (!msg) return res.status(404).json({ error: '消息不存在' });
+  db.prepare(
+    `INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at)
+     SELECT id, ?, ? FROM messages WHERE conversation_type = ? AND conversation_id = ? AND id <= ? AND type != 'system'`
+  ).run(userId, nowIso(), type, id, upTo);
+  return { ok: true };
+}
 
-  const rows = db
+function listReads(type, id, messageId) {
+  const msg = getConversationMessage(type, id, messageId);
+  if (!msg) return null;
+  return db
     .prepare(
       `SELECT u.id, u.nickname, u.avatar
        FROM message_reads mr JOIN users u ON u.id = mr.user_id
        WHERE mr.message_id = ? ORDER BY mr.read_at ASC, u.id ASC`
     )
     .all(messageId);
+}
+
+// ===== 路由：频道聊天（chat） =====
+router.get('/channels/:channelId/messages', (req, res) => {
+  const channelId = Number(req.params.channelId);
+  if (!Number.isInteger(channelId)) return res.status(400).json({ error: '无效的频道 ID' });
+  if (!db.prepare('SELECT id FROM channels WHERE id = ?').get(channelId)) {
+    return res.status(404).json({ error: '频道不存在' });
+  }
+  res.json(listConversationMessages('chat', channelId));
+});
+
+router.post('/channels/:channelId/messages', (req, res) => {
+  const channelId = Number(req.params.channelId);
+  if (!Number.isInteger(channelId)) return res.status(400).json({ error: '无效的频道 ID' });
+  const result = insertConversationMessage('chat', channelId, req.body?.userId, req.body || {});
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.status(201).json(result.message);
+});
+
+router.post('/channels/:channelId/messages/:messageId/recall', (req, res) => {
+  const result = recallConversationMessage('chat', Number(req.params.channelId), Number(req.params.messageId), Number(req.body?.userId));
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  const io = req.app.get('io');
+  if (io) io.to(`channel:${Number(req.params.channelId)}`).emit('message:recalled', { conversationType: 'chat', conversationId: Number(req.params.channelId), messageId: result.messageId, recalledBy: Number(req.body?.userId) });
+  res.json(result);
+});
+
+router.post('/channels/:channelId/messages/:messageId/react', (req, res) => {
+  const result = reactConversationMessage('chat', Number(req.params.channelId), Number(req.params.messageId), Number(req.body?.userId), req.body?.emoji);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  const io = req.app.get('io');
+  if (io) io.to(`channel:${Number(req.params.channelId)}`).emit('message:reaction', { conversationType: 'chat', conversationId: Number(req.params.channelId), messageId: result.messageId, reactions: result.reactions });
+  res.json(result);
+});
+
+router.get('/channels/:channelId/messages/:messageId/reads', (req, res) => {
+  const rows = listReads('chat', Number(req.params.channelId), Number(req.params.messageId));
+  if (rows === null) return res.status(404).json({ error: '消息不存在' });
   res.json(rows);
 });
 
-// POST /api/posts/:id/read —— 标记已读（upToMessageId 及之前的消息）
+router.post('/channels/:channelId/read', (req, res) => {
+  const result = readConversation('chat', Number(req.params.channelId), Number(req.body?.userId), Number(req.body?.upToMessageId));
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json(result);
+});
+
+// ===== 路由：活动讨论区（activity） =====
+router.get('/posts/:id/messages', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: '无效的活动 ID' });
+  if (!db.prepare('SELECT id FROM posts WHERE id = ?').get(id)) {
+    return res.status(404).json({ error: '活动不存在' });
+  }
+  res.json(listConversationMessages('activity', id));
+});
+
+router.post('/posts/:id/messages', (req, res) => {
+  const result = insertConversationMessage('activity', req.params.id, req.body?.userId, req.body || {});
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.status(201).json(result.message);
+});
+
+router.post('/posts/:id/messages/:messageId/recall', (req, res) => {
+  const id = Number(req.params.id);
+  const result = recallConversationMessage('activity', id, Number(req.params.messageId), Number(req.body?.userId));
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  const io = req.app.get('io');
+  if (io) io.to(`post:${id}`).emit('message:recalled', { conversationType: 'activity', conversationId: id, messageId: result.messageId, recalledBy: Number(req.body?.userId) });
+  res.json(result);
+});
+
+router.post('/posts/:id/messages/:messageId/react', (req, res) => {
+  const id = Number(req.params.id);
+  const result = reactConversationMessage('activity', id, Number(req.params.messageId), Number(req.body?.userId), req.body?.emoji);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  const io = req.app.get('io');
+  if (io) io.to(`post:${id}`).emit('message:reaction', { conversationType: 'activity', conversationId: id, messageId: result.messageId, reactions: result.reactions });
+  res.json(result);
+});
+
+router.get('/posts/:id/messages/:messageId/reads', (req, res) => {
+  const rows = listReads('activity', Number(req.params.id), Number(req.params.messageId));
+  if (rows === null) return res.status(404).json({ error: '消息不存在' });
+  res.json(rows);
+});
+
 router.post('/posts/:id/read', (req, res) => {
-  const postId = Number(req.params.id);
-  const { userId, upToMessageId } = req.body || {};
-  const uid = Number(userId);
-  const upTo = Number(upToMessageId);
-  if (!Number.isInteger(postId)) return res.status(400).json({ error: '无效的活动 ID' });
-  if (!Number.isInteger(uid)) return res.status(400).json({ error: '缺少有效的 userId' });
-  if (!Number.isInteger(upTo)) return res.status(400).json({ error: '缺少有效的 upToMessageId' });
-  if (!isParticipant(postId, uid)) return res.status(403).json({ error: '加入活动后可标记已读' });
-
-  db.prepare(
-    `INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at)
-     SELECT id, ?, ? FROM messages WHERE post_id = ? AND id <= ? AND type != 'system'`
-  ).run(uid, nowIso(), postId, upTo);
-
-  res.json({ ok: true });
+  const result = readConversation('activity', Number(req.params.id), Number(req.body?.userId), Number(req.body?.upToMessageId));
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json(result);
 });
 
 export default router;

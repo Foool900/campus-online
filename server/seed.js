@@ -179,7 +179,7 @@ export function seedIfEmpty() {
   );
   const insertChannel = db.prepare('INSERT INTO channels (area_id, name) VALUES (?, ?)');
   const insertUser = db.prepare('INSERT INTO users (nickname, college, avatar, exp, created_at) VALUES (?, ?, ?, ?, ?)');
-  const insertMessage = db.prepare('INSERT INTO messages (channel_id, user_id, content, created_at) VALUES (?, ?, ?, ?)');
+  const insertMessage = db.prepare('INSERT INTO messages (channel_id, user_id, conversation_type, conversation_id, content, created_at) VALUES (?, ?, ?, ?, ?, ?)');
   const insertPost = db.prepare('INSERT INTO posts (channel_id, user_id, title, content, category, created_at) VALUES (?, ?, ?, ?, ?, ?)');
   const insertTodo = db.prepare(
     `INSERT INTO todos (user_id, title, description, due_date, status, exp_reward, area_id, created_at, completed_at)
@@ -226,12 +226,12 @@ export function seedIfEmpty() {
     const demoInfo = insertUser.run('小荷', '计算机与信息工程学院', '🐸', 30, nowIso());
     const demoUserId = Number(demoInfo.lastInsertRowid);
 
-    // 示例消息
-    insertMessage.run(channelIdByKey['minglun:图书馆'], demoUserId, '明伦图书馆今天安静又舒服 📚', nowIso());
-    insertMessage.run(channelIdByKey['minglun:图书馆'], demoUserId, '靠窗的位置阳光正好～', nowIso());
-    insertMessage.run(channelIdByKey['minglun:中心食堂'], demoUserId, '老校区食堂的烩面 yyds！', nowIso());
-    insertMessage.run(channelIdByKey['jinming:图书馆'], demoUserId, '金明图书馆预约到座位啦，冲！', nowIso());
-    insertMessage.run(channelIdByKey['jinming:图书馆'], demoUserId, '有没有一起考研复习的搭子？', nowIso());
+    // 示例消息（chat 会话，conversation_id = 频道 id）
+    insertMessage.run(channelIdByKey['minglun:图书馆'], demoUserId, 'chat', channelIdByKey['minglun:图书馆'], '明伦图书馆今天安静又舒服 📚', nowIso());
+    insertMessage.run(channelIdByKey['minglun:图书馆'], demoUserId, 'chat', channelIdByKey['minglun:图书馆'], '靠窗的位置阳光正好～', nowIso());
+    insertMessage.run(channelIdByKey['minglun:中心食堂'], demoUserId, 'chat', channelIdByKey['minglun:中心食堂'], '老校区食堂的烩面 yyds！', nowIso());
+    insertMessage.run(channelIdByKey['jinming:图书馆'], demoUserId, 'chat', channelIdByKey['jinming:图书馆'], '金明图书馆预约到座位啦，冲！', nowIso());
+    insertMessage.run(channelIdByKey['jinming:图书馆'], demoUserId, 'chat', channelIdByKey['jinming:图书馆'], '有没有一起考研复习的搭子？', nowIso());
 
     // 示例活动帖
     insertPost.run(channelIdByKey['minglun:图书馆'], demoUserId, '【自习搭子】明伦图书馆一起自习', '每天 19:00-22:00，四楼靠窗区，想来的留言～', '自习', nowIso());

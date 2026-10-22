@@ -89,51 +89,69 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: '服务器内部错误' });
 });
 
-function broadcastPresence(postId) {
-  io.to(`post:${postId}`).emit('presence:update', { postId, online: presenceList(postId) });
+function broadcastPresence(type, id) {
+  const room = type === 'activity' ? `post:${id}` : `channel:${id}`;
+  io.to(room).emit('presence:update', { conversationType: type, conversationId: id, online: presenceList(type, id) });
 }
 
-// Socket.IO：房间名 channel:{channelId} / post:{postId}
+function trackPresence(socket, type, id, userId) {
+  if (!Number.isInteger(id) || !Number.isInteger(userId)) return;
+  socket.data.userId = userId;
+  if (!socket.data.rooms) socket.data.rooms = new Set();
+  const key = `${type}:${id}`;
+  if (socket.data.rooms.has(key)) return;
+  socket.data.rooms.add(key);
+  bumpPresence(type, id, userId, 1);
+  broadcastPresence(type, id);
+}
+
+function untrackPresence(socket, type, id, userId) {
+  if (!Number.isInteger(id) || !Number.isInteger(userId)) return;
+  const key = `${type}:${id}`;
+  if (!socket.data.rooms?.has(key)) return;
+  socket.data.rooms.delete(key);
+  bumpPresence(type, id, userId, -1);
+  broadcastPresence(type, id);
+}
+
+// Socket.IO：房间名 channel:{channelId} / post:{postId}（均带在线成员 presence）
 io.on('connection', (socket) => {
-  socket.on('join:channel', ({ channelId }) => {
+  socket.on('join:channel', ({ channelId, userId }) => {
     const cid = Number(channelId);
-    if (Number.isInteger(cid)) socket.join(`channel:${cid}`);
+    if (!Number.isInteger(cid)) return;
+    socket.join(`channel:${cid}`);
+    trackPresence(socket, 'chat', cid, Number(userId));
   });
 
-  socket.on('leave:channel', ({ channelId }) => {
+  socket.on('leave:channel', ({ channelId, userId }) => {
     const cid = Number(channelId);
-    if (Number.isInteger(cid)) socket.leave(`channel:${cid}`);
+    if (!Number.isInteger(cid)) return;
+    socket.leave(`channel:${cid}`);
+    untrackPresence(socket, 'chat', cid, Number(userId));
   });
 
-  // 活动讨论区房间 + 在线成员
   socket.on('join:post', ({ postId, userId }) => {
     const pid = Number(postId);
-    const uid = Number(userId);
     if (!Number.isInteger(pid)) return;
     socket.join(`post:${pid}`);
-    if (Number.isInteger(uid)) {
-      socket.data.postId = pid;
-      socket.data.userId = uid;
-      bumpPresence(pid, uid, 1);
-      broadcastPresence(pid);
-    }
+    trackPresence(socket, 'activity', pid, Number(userId));
   });
   socket.on('leave:post', ({ postId, userId }) => {
     const pid = Number(postId);
-    const uid = Number(userId);
     if (!Number.isInteger(pid)) return;
     socket.leave(`post:${pid}`);
-    if (Number.isInteger(uid)) {
-      bumpPresence(pid, uid, -1);
-      broadcastPresence(pid);
-    }
+    untrackPresence(socket, 'activity', pid, Number(userId));
   });
 
   socket.on('disconnect', () => {
-    const { postId, userId } = socket.data;
-    if (Number.isInteger(postId) && Number.isInteger(userId)) {
-      bumpPresence(postId, userId, -1);
-      broadcastPresence(postId);
+    const userId = socket.data.userId;
+    const rooms = socket.data.rooms;
+    if (rooms && Number.isInteger(userId)) {
+      for (const key of rooms) {
+        const i = key.indexOf(':');
+        bumpPresence(key.slice(0, i), Number(key.slice(i + 1)), userId, -1);
+        broadcastPresence(key.slice(0, i), Number(key.slice(i + 1)));
+      }
     }
   });
 
@@ -148,6 +166,8 @@ io.on('connection', (socket) => {
     }
     const room = Number.isInteger(pid) ? `post:${pid}` : `channel:${Number(channelId)}`;
     io.to(room).emit('message:new', {
+      conversationType: result.message.conversationType,
+      conversationId: result.message.conversationId,
       channelId: Number(channelId) || null,
       postId: pid,
       message: result.message,

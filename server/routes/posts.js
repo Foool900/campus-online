@@ -104,7 +104,7 @@ function parseJson(s) {
 
 // 活动卡片聚合信息：在线数 / 未读数 / 最近 1~2 条消息摘要 / 是否 @我 或回复我
 function cardSummary(postId, userId) {
-  const summary = { onlineCount: onlineCount(postId), unreadCount: 0, recentMessages: [], hasMentionMe: false, hasReplyMe: false };
+  const summary = { onlineCount: onlineCount('activity', postId), unreadCount: 0, recentMessages: [], hasMentionMe: false, hasReplyMe: false };
 
   const recent = db
     .prepare(
