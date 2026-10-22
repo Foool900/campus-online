@@ -15,6 +15,8 @@ function formatTime(iso) {
   return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
 }
 
+const STATUS_LABELS = { draft: '草稿', open: '报名中', ongoing: '进行中', ended: '已结束', cancelled: '已取消' };
+
 export default function AreaDialog({ area, onClose }) {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -81,16 +83,16 @@ export default function AreaDialog({ area, onClose }) {
     };
   }, [area.id]);
 
-  // 加载活动帖
+  // 加载活动帖（带 userId 获取卡片聚合：在线数/未读数/@我/回复我）
   useEffect(() => {
     if (!channel) return;
     setPostsLoading(true);
     api
-      .posts(channel.id)
+      .posts(channel.id, user?.id)
       .then(setPosts)
       .catch(() => {})
       .finally(() => setPostsLoading(false));
-  }, [channel?.id]);
+  }, [channel?.id, user?.id]);
 
   // 聊天自动滚到底部
   useEffect(() => {
@@ -166,14 +168,29 @@ export default function AreaDialog({ area, onClose }) {
               <div className="post-head">
                 <span className="post-category">{p.category}</span>
                 <span className="post-title">{p.title}</span>
+                {p.status && <span className={'status-badge status-' + p.status}>{STATUS_LABELS[p.status] || p.status}</span>}
                 <span className="post-card-arrow">›</span>
               </div>
               {p.content && <div className="post-content">{p.content}</div>}
+              {p.recentMessages?.length > 0 && (
+                <div className="post-recent">
+                  {p.recentMessages.map((rm, i) => (
+                    <div key={i} className="post-recent-line">
+                      <span className="post-recent-nick">{rm.nickname}</span>：{rm.content}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="post-meta">
                 <span>
                   {p.avatar || '🎓'} {p.nickname}
                 </span>
+                {p.userId === user?.id && <span className="act-admin-badge">管理员</span>}
                 <span>{formatTime(p.createdAt)}</span>
+                <span className="post-meta-spacer" />
+                {p.onlineCount > 0 && <span className="post-online">● {p.onlineCount} 在线</span>}
+                {p.unreadCount > 0 && <span className="post-unread">{p.unreadCount} 未读</span>}
+                {(p.hasMentionMe || p.hasReplyMe) && <span className="post-dot" title={p.hasMentionMe ? '有人 @ 我' : '有人回复我'} />}
               </div>
             </div>
           ))}

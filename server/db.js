@@ -56,12 +56,17 @@ export function initDb() {
     );
 
     CREATE TABLE IF NOT EXISTS messages (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      channel_id INTEGER NOT NULL,
-      user_id    INTEGER NOT NULL,
-      post_id    INTEGER,
-      content    TEXT    NOT NULL,
-      created_at TEXT    NOT NULL,
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      channel_id  INTEGER NOT NULL,
+      user_id     INTEGER NOT NULL,
+      post_id     INTEGER,
+      type        TEXT    NOT NULL DEFAULT 'text',
+      content     TEXT    NOT NULL,
+      reply_to    TEXT,
+      mentions    TEXT,
+      recalled_at TEXT,
+      recalled_by INTEGER,
+      created_at  TEXT    NOT NULL,
       FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
     );
@@ -73,6 +78,7 @@ export function initDb() {
       title      TEXT    NOT NULL,
       content    TEXT    NOT NULL DEFAULT '',
       category   TEXT    NOT NULL DEFAULT '综合',
+      status     TEXT    NOT NULL DEFAULT 'open',
       created_at TEXT    NOT NULL,
       FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
@@ -86,6 +92,61 @@ export function initDb() {
       created_at TEXT    NOT NULL,
       PRIMARY KEY (post_id, user_id),
       FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- 活动备注（管理员维护；visible_to_participants 决定是否对参与者可见）
+    CREATE TABLE IF NOT EXISTS post_notes (
+      id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_id                 INTEGER NOT NULL,
+      content                 TEXT    NOT NULL,
+      created_by              INTEGER NOT NULL,
+      created_at              TEXT    NOT NULL,
+      visible_to_participants INTEGER NOT NULL DEFAULT 1,
+      FOREIGN KEY (post_id)    REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- 活动操作日志（状态变更等，记录操作人/时间/旧值/新值）
+    CREATE TABLE IF NOT EXISTS post_operation_logs (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_id     INTEGER NOT NULL,
+      operator_id INTEGER NOT NULL,
+      action      TEXT    NOT NULL,
+      old_value   TEXT,
+      new_value   TEXT,
+      created_at  TEXT    NOT NULL,
+      FOREIGN KEY (post_id)     REFERENCES posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (operator_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- 消息表情回应（同一用户同一 emoji 只计一次）
+    CREATE TABLE IF NOT EXISTS message_reactions (
+      message_id INTEGER NOT NULL,
+      emoji      TEXT    NOT NULL,
+      user_id    INTEGER NOT NULL,
+      created_at TEXT    NOT NULL,
+      PRIMARY KEY (message_id, emoji, user_id),
+      FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
+    );
+
+    -- 消息已读（readBy）
+    CREATE TABLE IF NOT EXISTS message_reads (
+      message_id INTEGER NOT NULL,
+      user_id    INTEGER NOT NULL,
+      read_at    TEXT    NOT NULL,
+      PRIMARY KEY (message_id, user_id),
+      FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
+    );
+
+    -- 自定义表情包（按用户隔离，每人上限 50 张）
+    CREATE TABLE IF NOT EXISTS stickers (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL,
+      url        TEXT    NOT NULL,
+      created_at TEXT    NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
@@ -125,5 +186,20 @@ export function initDb() {
   const msgCols = db.prepare('PRAGMA table_info(messages)').all().map((c) => c.name);
   if (!msgCols.includes('post_id')) {
     db.exec('ALTER TABLE messages ADD COLUMN post_id INTEGER;');
+  }
+  // 迁移：messages 补 type 列（text | sticker | system | recalled）
+  if (!msgCols.includes('type')) {
+    db.exec("ALTER TABLE messages ADD COLUMN type TEXT NOT NULL DEFAULT 'text';");
+  }
+  // 迁移：messages 补互动字段（回复/提及/撤回）
+  if (!msgCols.includes('reply_to')) db.exec('ALTER TABLE messages ADD COLUMN reply_to TEXT;');
+  if (!msgCols.includes('mentions')) db.exec('ALTER TABLE messages ADD COLUMN mentions TEXT;');
+  if (!msgCols.includes('recalled_at')) db.exec('ALTER TABLE messages ADD COLUMN recalled_at TEXT;');
+  if (!msgCols.includes('recalled_by')) db.exec('ALTER TABLE messages ADD COLUMN recalled_by INTEGER;');
+
+  // 迁移：posts 补 status 列（活动状态机）
+  const postCols = db.prepare('PRAGMA table_info(posts)').all().map((c) => c.name);
+  if (!postCols.includes('status')) {
+    db.exec("ALTER TABLE posts ADD COLUMN status TEXT NOT NULL DEFAULT 'open';");
   }
 }

@@ -391,6 +391,14 @@ input, select, textarea { color: var(--text); }
 .post-card-link:active { transform: scale(0.99); }
 .post-card-link:focus-visible { outline: 2px solid rgba(56, 189, 248, 0.6); outline-offset: 2px; }
 .post-card-arrow { margin-left: auto; color: var(--muted); font-size: 18px; flex-shrink: 0; }
+.post-meta { align-items: center; flex-wrap: wrap; }
+.post-meta-spacer { flex: 1; }
+.post-online { color: #6ee7b7; font-size: 11px; flex-shrink: 0; }
+.post-unread { background: rgba(56, 189, 248, 0.2); color: #7dd3fc; font-size: 11px; padding: 1px 7px; border-radius: 999px; flex-shrink: 0; }
+.post-dot { width: 9px; height: 9px; border-radius: 50%; background: #f87171; flex-shrink: 0; box-shadow: 0 0 6px rgba(248, 113, 113, 0.8); }
+.post-recent { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; padding: 6px 8px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; }
+.post-recent-line { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.post-recent-nick { color: #7dd3fc; }
 .fab { background: linear-gradient(135deg, #38bdf8, #0ea5e9); color: #04212e; box-shadow: 0 6px 16px rgba(56, 189, 248, 0.4); }
 .fab:hover { filter: brightness(1.08); }
 
@@ -1018,3 +1026,189 @@ input, select, textarea { color: var(--text); }
     border-right: 1px solid var(--line);
   }
 }
+
+/* 活动状态徽章 */
+.status-badge {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.status-open { background: rgba(56, 189, 248, 0.18); color: #7dd3fc; }
+.status-ongoing { background: rgba(52, 211, 153, 0.18); color: #6ee7b7; }
+.status-draft { background: rgba(147, 160, 173, 0.18); color: #93a0ad; }
+.status-ended { background: rgba(255, 255, 255, 0.1); color: var(--muted); }
+.status-cancelled { background: rgba(248, 113, 113, 0.18); color: #fca5a5; }
+
+/* 管理员标识 / 管理面板 */
+.act-admin-badge {
+  font-size: 10px;
+  color: #3a2505;
+  background: #f5c76a;
+  padding: 1px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.act-admin {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.act-admin-head { font-size: 13px; font-weight: 600; color: #f5c76a; }
+.act-status-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.act-status-btn { min-height: 36px; }
+.act-admin-hint { font-size: 12px; color: var(--muted); }
+
+/* 备注 */
+.act-notes { display: flex; flex-direction: column; gap: 6px; }
+.act-notes-toggle {
+  border: none;
+  background: none;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.act-notes-empty { font-size: 12px; color: var(--muted); }
+.act-note {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.act-note-content { font-size: 13px; color: rgba(255, 255, 255, 0.88); white-space: pre-wrap; word-break: break-word; }
+.act-note-meta { display: flex; gap: 8px; margin-top: 4px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+.act-note-vis { color: #7dd3fc; }
+.act-note-form { display: flex; flex-direction: column; gap: 6px; }
+.act-note-form textarea {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #fff;
+  outline: none;
+  resize: none;
+}
+.act-note-form textarea:focus { border-color: rgba(56, 189, 248, 0.6); }
+.act-note-form-row { display: flex; align-items: center; gap: 10px; }
+.act-note-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); flex: 1; }
+.act-note-form-row .btn { flex-shrink: 0; min-height: 36px; }
+
+/* 系统消息（状态变更等，居中横幅） */
+.act-system-msg {
+  align-self: center;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+  padding: 4px 14px;
+  max-width: 90%;
+  text-align: center;
+}
+
+/* 频道顶部：在线成员 */
+.act-channel-top { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); position: relative; flex-shrink: 0; }
+.act-online-btn { border: none; background: none; color: #6ee7b7; font-size: 13px; cursor: pointer; padding: 0; }
+.act-online-list {
+  position: absolute; top: 100%; left: 10px; z-index: 10;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  background: rgba(13, 17, 25, 0.98); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 10px; max-width: 280px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.act-online-item { font-size: 12px; color: rgba(255, 255, 255, 0.85); display: inline-flex; align-items: center; gap: 4px; }
+.act-online-empty { font-size: 12px; color: var(--muted); }
+.act-online-text { font-size: 10px; color: #6ee7b7; }
+
+/* 头像在线绿点 */
+.act-msg-avatar { position: relative; }
+.act-avatar-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; background: #34d399; border: 2px solid #0b1016; }
+
+/* 回复引用条 */
+.act-replybar {
+  display: block; border: none; background: none; color: var(--muted); font-size: 12px;
+  cursor: pointer; padding: 0 0 2px 6px; text-align: left; border-left: 2px solid var(--line);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.act-replybar:hover { color: #7dd3fc; }
+
+/* 撤回占位 */
+.act-msg-recalled { color: var(--muted); font-style: italic; }
+
+/* 表情包消息 */
+.act-sticker { max-width: 140px; max-height: 140px; border-radius: 8px; display: block; }
+
+/* 回应汇总 */
+.act-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.act-react-chip { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05); color: rgba(255, 255, 255, 0.85); font-size: 12px; border-radius: 999px; padding: 2px 8px; cursor: pointer; }
+.act-react-chip.mine { border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.15); color: #7dd3fc; }
+
+/* 已读 */
+.act-readcount { border: none; background: none; color: var(--muted); font-size: 11px; cursor: pointer; padding: 0; margin-top: 2px; }
+.act-readcount:hover { color: #7dd3fc; }
+
+/* 消息操作栏（桌面悬停显示，移动端常驻） */
+.act-msg-actions { display: flex; gap: 6px; margin-top: 4px; opacity: 0; transition: opacity 0.12s; }
+.act-msg:hover .act-msg-actions, .act-msg:focus-within .act-msg-actions { opacity: 1; }
+.act-msg-actions button { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05); color: rgba(255, 255, 255, 0.8); font-size: 14px; border-radius: 6px; min-width: 30px; min-height: 30px; cursor: pointer; }
+.act-msg-actions button:hover { background: rgba(255, 255, 255, 0.12); }
+@media (hover: none) { .act-msg-actions { opacity: 1; } }
+
+/* 提到我的消息高亮 / 跳转闪烁 */
+.act-msg.mention-me { background: rgba(56, 189, 248, 0.06); border-radius: 8px; }
+.act-msg.flash { animation: actFlash 1.6s ease; }
+@keyframes actFlash { 0%, 60% { background: rgba(245, 199, 106, 0.22); } }
+
+/* 输入区改为纵向（回复预览 + 输入 + 工具条） */
+.act-composer { position: relative; flex-direction: column; align-items: stretch; }
+.act-composer textarea { flex: none; width: 100%; }
+.act-replypreview { display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+.act-replypreview span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-replypreview button { border: none; background: none; color: #fff; cursor: pointer; font-size: 16px; }
+.act-composer-bar { display: flex; align-items: center; gap: 8px; }
+.act-tool-btn { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05); color: rgba(255, 255, 255, 0.85); font-size: 13px; border-radius: 8px; min-height: 36px; padding: 0 10px; cursor: pointer; }
+.act-composer-spacer { flex: 1; }
+
+/* @ 提及弹窗（浮在输入框上方） */
+.act-mention-pop {
+  position: absolute; bottom: calc(100% + 6px); left: 12px; right: 12px;
+  display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto;
+  background: rgba(13, 17, 25, 0.98); border: 1px solid var(--line); border-radius: 10px; padding: 6px;
+}
+.act-mention-item { display: flex; align-items: center; gap: 8px; border: none; background: none; color: rgba(255, 255, 255, 0.9); font-size: 13px; padding: 8px 10px; border-radius: 6px; cursor: pointer; text-align: left; }
+.act-mention-item:hover { background: rgba(255, 255, 255, 0.08); }
+.act-mention-name { flex: 1; }
+.act-mention-empty { font-size: 12px; color: var(--muted); padding: 10px; text-align: center; }
+
+/* 表情包抽屉（浮在输入框上方） */
+.act-sticker-drawer {
+  position: absolute; bottom: calc(100% + 6px); left: 12px; right: 12px;
+  background: rgba(13, 17, 25, 0.98); border: 1px solid var(--line); border-radius: 10px; padding: 8px; max-height: 240px; overflow-y: auto;
+}
+.act-sticker-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.act-sticker-tabs button { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05); color: rgba(255, 255, 255, 0.8); font-size: 12px; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.act-sticker-tabs button.active { background: rgba(56, 189, 248, 0.16); border-color: rgba(56, 189, 248, 0.5); color: #7dd3fc; }
+.act-sticker-close { margin-left: auto; }
+.act-emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.act-emoji-grid button { font-size: 22px; border: none; background: none; cursor: pointer; padding: 4px; }
+.act-emoji-grid button:hover { background: rgba(255, 255, 255, 0.08); border-radius: 6px; }
+.act-sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.act-sticker-grid img { width: 100%; aspect-ratio: 1 / 1; object-fit: contain; border-radius: 8px; cursor: pointer; background: rgba(255, 255, 255, 0.04); }
+.act-sticker-grid img:hover { outline: 2px solid rgba(56, 189, 248, 0.5); }
+.act-upload { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.act-upload-msg { font-size: 13px; color: #6ee7b7; }
+.act-upload-hint { font-size: 11px; color: var(--muted); }
+
+/* 通用弹层（回应选择 / 已读名单） */
+.act-pop-overlay { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; background: rgba(5, 8, 14, 0.5); }
+.act-react-pop { display: flex; gap: 6px; background: rgba(20, 25, 36, 0.98); border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
+.act-react-pop button { font-size: 24px; border: none; background: none; cursor: pointer; padding: 4px; }
+.act-react-pop button:hover { transform: scale(1.25); }
+.act-reads-card { width: min(320px, 90vw); max-height: 70vh; overflow-y: auto; background: rgba(20, 25, 36, 0.98); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.act-reads-head { display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: #fff; }
+.act-reads-head button { border: none; background: none; color: #fff; font-size: 18px; cursor: pointer; }
+.act-reads-item { font-size: 13px; color: rgba(255, 255, 255, 0.85); }

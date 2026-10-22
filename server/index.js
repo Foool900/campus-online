@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { initDb } from './db.js';
 import { seedIfEmpty, ensureWorldChannel } from './seed.js';
+import { bumpPresence, presenceList } from './presence.js';
 import areasRouter from './routes/areas.js';
 import channelsRouter from './routes/channels.js';
 import messagesRouter, { insertMessage, insertPostMessage } from './routes/messages.js';
@@ -15,6 +16,7 @@ import campusesRouter from './routes/campuses.js';
 import postsRouter from './routes/posts.js';
 import achievementsRouter from './routes/achievements.js';
 import worldRouter from './routes/world.js';
+import stickersRouter from './routes/stickers.js';
 
 // 初始化数据库表结构与种子数据（仅在空库时写入）
 initDb();
@@ -29,6 +31,8 @@ const PORT = process.env.PORT || 3001;
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: '*' } });
+
+app.set('io', io);
 
 app.use(express.json());
 
@@ -47,6 +51,7 @@ app.use('/api', campusesRouter);
 app.use('/api', postsRouter);
 app.use('/api', achievementsRouter);
 app.use('/api', worldRouter);
+app.use('/api', stickersRouter);
 
 // 未匹配的 /api 路由
 app.use('/api', (req, res) => {
@@ -55,6 +60,10 @@ app.use('/api', (req, res) => {
 
 // 生产环境：托管前端构建产物（client/dist），前后端同源，一个 URL 即可访问
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const uploadsDir = path.join(__dirname, 'data', 'uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
+
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 
 if (fs.existsSync(clientDist)) {
@@ -73,11 +82,18 @@ if (fs.existsSync(clientDist)) {
 
 // 统一错误处理
 app.use((err, req, res, next) => {
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: '文件过大（单张最多 2MB）' });
+  }
   console.error('[server] 未处理错误:', err);
   res.status(500).json({ error: '服务器内部错误' });
 });
 
-// Socket.IO：房间名 channel:{channelId}
+function broadcastPresence(postId) {
+  io.to(`post:${postId}`).emit('presence:update', { postId, online: presenceList(postId) });
+}
+
+// Socket.IO：房间名 channel:{channelId} / post:{postId}
 io.on('connection', (socket) => {
   socket.on('join:channel', ({ channelId }) => {
     const cid = Number(channelId);
@@ -89,20 +105,42 @@ io.on('connection', (socket) => {
     if (Number.isInteger(cid)) socket.leave(`channel:${cid}`);
   });
 
-  // 活动讨论区房间
-  socket.on('join:post', ({ postId }) => {
+  // 活动讨论区房间 + 在线成员
+  socket.on('join:post', ({ postId, userId }) => {
     const pid = Number(postId);
-    if (Number.isInteger(pid)) socket.join(`post:${pid}`);
+    const uid = Number(userId);
+    if (!Number.isInteger(pid)) return;
+    socket.join(`post:${pid}`);
+    if (Number.isInteger(uid)) {
+      socket.data.postId = pid;
+      socket.data.userId = uid;
+      bumpPresence(pid, uid, 1);
+      broadcastPresence(pid);
+    }
   });
-  socket.on('leave:post', ({ postId }) => {
+  socket.on('leave:post', ({ postId, userId }) => {
     const pid = Number(postId);
-    if (Number.isInteger(pid)) socket.leave(`post:${pid}`);
+    const uid = Number(userId);
+    if (!Number.isInteger(pid)) return;
+    socket.leave(`post:${pid}`);
+    if (Number.isInteger(uid)) {
+      bumpPresence(pid, uid, -1);
+      broadcastPresence(pid);
+    }
   });
 
-  socket.on('message:send', ({ channelId, postId, userId, content }, ack) => {
+  socket.on('disconnect', () => {
+    const { postId, userId } = socket.data;
+    if (Number.isInteger(postId) && Number.isInteger(userId)) {
+      bumpPresence(postId, userId, -1);
+      broadcastPresence(postId);
+    }
+  });
+
+  socket.on('message:send', ({ channelId, postId, userId, content, type, replyTo, mentions }, ack) => {
     const pid = postId ? Number(postId) : null;
     const result = Number.isInteger(pid)
-      ? insertPostMessage(pid, userId, content)
+      ? insertPostMessage(pid, userId, { type, content, replyTo, mentions })
       : insertMessage(channelId, userId, content);
     if (result.error) {
       if (typeof ack === 'function') ack({ ok: false, error: result.error });
