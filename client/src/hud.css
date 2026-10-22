@@ -393,7 +393,7 @@ input, select, textarea { color: var(--text); }
 .toast { background: rgba(15, 20, 30, 0.94); color: #fff; border: 1px solid rgba(255,255,255,.12); }
 
 /* 响应式 */
-@media (max-width: 820px) {
+@media (max-width: 932px) {
   .hide-sm { display: none !important; }
 }
 
@@ -412,10 +412,20 @@ input, select, textarea { color: var(--text); }
 .world-chat-wrap.portrait {
   left: 10px;
   transform: none;
-  width: min(300px, 78vw);
+  width: min(300px, calc(100vw - 80px));
   max-width: none;
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
 }
+.world-chat-wrap.landscape {
+  left: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  transform: none;
+  width: min(320px, 44vw);
+  max-width: none;
+}
+.world-chat .wc-chevron { font-size: 11px; color: var(--muted); }
+.world-chat.collapsed .wc-messages,
+.world-chat.collapsed .wc-input { display: none; }
 
 /* ============================================================
    手机端 HUD（横屏 / 竖屏双模式）
@@ -428,7 +438,7 @@ input, select, textarea { color: var(--text); }
 }
 .mobile-hud > * { pointer-events: auto; }
 
-/* 小地图（左上角）+ 右下角模式切换按钮 */
+/* 小地图（左上角）+ 容器内右下角模式切换按钮（贴边留 6px 内边距） */
 .m-minimap {
   position: absolute;
   top: calc(10px + env(safe-area-inset-top, 0px));
@@ -438,13 +448,13 @@ input, select, textarea { color: var(--text); }
 .m-minimap .minimap { width: 84px; }
 .m-mode-toggle {
   position: absolute;
-  right: -6px;
-  bottom: -6px;
+  right: 6px;
+  bottom: 6px;
   width: 30px;
   height: 30px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(13, 17, 25, 0.9);
+  background: rgba(13, 17, 25, 0.92);
   color: #fff;
   font-size: 15px;
   line-height: 1;
@@ -453,11 +463,11 @@ input, select, textarea { color: var(--text); }
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-  z-index: 2;
+  z-index: 3;
 }
 .m-mode-toggle:active { transform: scale(0.94); }
 
-/* 换地图 / 换世界观：圆形 emoji 按钮，并排在小地图下方 */
+/* 换地图 / 换世界观：圆形 emoji 按钮，并排在小地图正下方 */
 .m-mapbtns {
   position: absolute;
   top: calc(10px + env(safe-area-inset-top, 0px) + 84px + 10px);
@@ -484,7 +494,7 @@ input, select, textarea { color: var(--text); }
   align-items: center;
   gap: 6px;
   padding: 6px 9px;
-  max-width: 160px;
+  max-width: min(150px, calc(100vw - 210px));
 }
 .m-campus-name {
   font-size: 12px;
@@ -496,16 +506,7 @@ input, select, textarea { color: var(--text); }
 }
 .m-campus .m-edit { padding: 4px 7px; font-size: 14px; flex-shrink: 0; }
 
-/* 右上角：用户信息块 */
-.m-user {
-  position: absolute;
-  top: calc(10px + env(safe-area-inset-top, 0px));
-  right: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
+/* 用户卡（竖屏侧边栏 / 横屏右面板共用） */
 .m-user-card {
   display: flex;
   align-items: center;
@@ -526,6 +527,7 @@ input, select, textarea { color: var(--text); }
 }
 .m-user-info { min-width: 0; }
 .m-nick {
+  display: block;
   font-size: 13px;
   font-weight: 600;
   color: #fff;
@@ -534,38 +536,167 @@ input, select, textarea { color: var(--text); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.m-level { font-size: 10px; color: rgba(255, 255, 255, 0.45); }
-.m-chips { display: flex; gap: 4px; }
-.m-user-btns { display: flex; gap: 6px; }
-.m-user-btns .hud-btn { padding: 6px 8px; font-size: 12px; }
+.m-level { display: block; font-size: 10px; color: rgba(255, 255, 255, 0.45); }
 
-/* 背包 / 任务 / 设置：竖屏在右侧竖排，横屏在左下横排 */
-.m-quick {
+/* 横屏：顶部极窄状态栏（P0 信息） */
+.m-statusbar {
   position: absolute;
-  right: 10px;
-  top: calc(10px + env(safe-area-inset-top, 0px) + 100px);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 46vw;
 }
-.m-quick .hud-btn { justify-content: center; }
-
-/* 缩放（仅横屏） */
-.m-zoom {
-  position: absolute;
-  right: 10px;
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+.m-statusbar-inner {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 8px 6px;
-  border-radius: 12px;
-  background: rgba(13, 17, 25, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 12px;
+  white-space: nowrap;
 }
-.m-zoom .hud-btn { padding: 6px 10px; font-size: 16px; }
-.m-zoom-val { font-size: 11px; color: #7dd3fc; font-family: monospace; }
+.m-status-name {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-status-sep { color: rgba(255, 255, 255, 0.3); }
+.m-status-level { font-size: 12px; color: #7dd3fc; font-weight: 600; }
+.m-status-edit { padding: 4px 8px; font-size: 14px; flex-shrink: 0; }
+
+/* 横屏：右上角 用户学习 + 用户排名表（可整体折叠为一个图标） */
+.m-rightpanel {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  right: 10px;
+  width: min(196px, 28vw);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.m-rightpanel .m-user-card { width: 100%; }
+.m-rightpanel .m-avatar { width: 34px; height: 34px; font-size: 16px; }
+.m-rightpanel .m-user-card .hud-icon-chip { width: 28px; height: 28px; flex-shrink: 0; }
+.m-rightpanel .m-nick { max-width: 60px; }
+.m-rightpanel-toggle {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 22px;
+  align-self: flex-end;
+}
+.m-rightpanel-collapse {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: center;
+}
+.m-gacha-inline {
+  width: 100%;
+  justify-content: center;
+  min-height: 44px;
+  color: #3a2505;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fde68a, #f5c76a 40%, #f0b429 65%, #f7d98b);
+  border: 1px solid rgba(255, 235, 180, 0.8);
+  box-shadow: 0 0 12px rgba(245, 199, 106, 0.4);
+}
+
+/* 横屏：右下角 背包 + 任务设置（大圆形触摸按钮） */
+.m-cornerbtns {
+  position: absolute;
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  gap: 10px;
+}
+.m-corner {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 26px;
+}
+
+/* 竖屏右侧统一侧边栏：用户学习 → 用户排名表 → 背包 → 任务设置 */
+.m-sidebar {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  right: 10px;
+  width: 176px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.m-user-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.m-sidebar .m-user-card .m-avatar { width: 34px; height: 34px; font-size: 16px; }
+.m-sidebar .m-user-card .hud-icon-chip { width: 28px; height: 28px; flex-shrink: 0; }
+.m-sidebar .m-user-card .m-nick { max-width: 52px; }
+.m-side-btn { width: 100%; justify-content: center; min-height: 44px; }
+.m-side-row { display: flex; gap: 8px; }
+.m-side-row .hud-btn { flex: 1; justify-content: center; padding: 8px 6px; font-size: 12px; min-height: 44px; }
+
+/* 用户排名表（迷你排行榜） */
+.m-rank { padding: 8px 9px; display: flex; flex-direction: column; gap: 5px; }
+.m-rank-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 2px 0 6px;
+  border: none;
+  background: none;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.m-rank-empty { font-size: 11px; color: var(--muted); text-align: center; padding: 4px 0; }
+.m-rank-row { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.m-rank-idx {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 10px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+.m-rank-row.top1 .m-rank-idx { background: #f5c76a; color: #3a2505; }
+.m-rank-row.top2 .m-rank-idx { background: #c8d0d8; color: #1f2937; }
+.m-rank-row.top3 .m-rank-idx { background: #e0a878; color: #3a1d05; }
+.m-rank-name {
+  flex: 1;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-rank-exp { color: #7dd3fc; font-weight: 700; font-family: monospace; }
 
 /* 卡池：悬浮小圆钮 */
 .m-gacha-btn {
@@ -580,42 +711,69 @@ input, select, textarea { color: var(--text); }
   font-size: 24px;
 }
 
-/* 竖屏：无缩放；卡池在右下角 */
-.mobile-hud.portrait .m-zoom { display: none; }
+/* 竖屏：隐藏横屏专用面板；卡池在右下角 */
+.mobile-hud.portrait .m-statusbar,
+.mobile-hud.portrait .m-rightpanel,
+.mobile-hud.portrait .m-cornerbtns { display: none; }
 .mobile-hud.portrait .m-gacha-btn {
   right: 12px;
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
 }
 
-/* 横屏：复刻桌面紧凑版 */
-.mobile-hud.landscape .m-minimap { width: 72px; }
-.mobile-hud.landscape .m-minimap .minimap { width: 72px; }
+/* 横屏：隐藏竖屏专用面板，启用手游 HUD */
+.mobile-hud.landscape {
+  --m-minimap: min(104px, 30dvh);
+}
+.mobile-hud.landscape .m-campus,
+.mobile-hud.landscape .m-sidebar,
+.mobile-hud.landscape .m-gacha-btn { display: none; }
+.mobile-hud.landscape .m-minimap,
+.mobile-hud.landscape .m-minimap .minimap { width: var(--m-minimap); }
+.mobile-hud.landscape .m-mode-toggle { width: 36px; height: 36px; font-size: 17px; }
 .mobile-hud.landscape .m-mapbtns {
-  top: calc(10px + env(safe-area-inset-top, 0px) + 72px + 8px);
+  top: calc(10px + env(safe-area-inset-top, 0px) + var(--m-minimap) + 10px);
 }
-.mobile-hud.landscape .m-campus {
-  top: calc(10px + env(safe-area-inset-top, 0px));
-  left: 50%;
-  transform: translateX(-50%);
-}
-.mobile-hud.landscape .m-quick {
-  right: auto;
-  left: 10px;
-  top: calc(10px + env(safe-area-inset-top, 0px) + 72px + 8px + 44px + 8px);
-  bottom: auto;
+.mobile-hud.landscape .m-mapbtns .m-round { width: 48px; height: 48px; }
+
+/* ============================================================
+   竖屏遮罩（横屏模式下手机仍竖屏时提示旋转）
+   ============================================================ */
+.portrait-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(5, 8, 14, 0.74);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
-.mobile-hud.landscape .m-quick .hud-btn { justify-content: flex-start; padding: 7px 10px; font-size: 12px; }
-.mobile-hud.landscape .m-gacha-btn {
-  right: 12px;
-  top: 46%;
-  transform: translateY(-50%);
+.portrait-mask-icon {
+  font-size: 60px;
+  line-height: 1;
+  animation: rotatePhone 1.6s ease-in-out infinite;
+}
+.portrait-mask-text {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.portrait-mask-btn { padding: 10px 18px; font-size: 13px; }
+@keyframes rotatePhone {
+  0%, 25% { transform: rotate(0deg); }
+  50%, 75% { transform: rotate(90deg); }
+  100% { transform: rotate(0deg); }
 }
 
 /* ============================================================
    手机端共享内容响应式（面板/抽屉/表单/卡片）
    ============================================================ */
-@media (max-width: 820px) {
+@media (max-width: 932px) {
   .hud-root { height: 100dvh; }
 
   /* 覆盖式页面铺满 */

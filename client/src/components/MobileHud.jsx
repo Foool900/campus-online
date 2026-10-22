@@ -1,6 +1,8 @@
-// 手机端 HUD：横屏 / 竖屏两套布局，通过小地图右下角的按钮手动切换
-// 定位全部走 hud.css 的 class（不写内联样式，便于两套布局共用一套 DOM），
-// 视觉复用 .hud-btn / .hud-panel / .minimap 等已有样式。
+import { useEffect, useState } from 'react';
+import { api } from '../api.js';
+
+// 手机端 HUD：横屏（手游 HUD）/ 竖屏（侧边栏布局）两套布局，
+// 通过小地图右下角的按钮手动切换。定位全部走 hud.css 的 class。
 
 function Minimap({ slug, mode, onToggleMode }) {
   const label = mode === 'portrait' ? '切换横屏' : '切换竖屏';
@@ -13,7 +15,7 @@ function Minimap({ slug, mode, onToggleMode }) {
         <div className="mm-dot" />
       </div>
       <button type="button" className="m-mode-toggle" onClick={onToggleMode} title={label} aria-label={label}>
-        🔁
+        🔄
       </button>
     </div>
   );
@@ -22,16 +24,17 @@ function Minimap({ slug, mode, onToggleMode }) {
 function MapButtons({ onSwitchMap, onSwitchWorld }) {
   return (
     <div className="m-mapbtns">
-      <button type="button" className="hud-btn m-round" onClick={onSwitchMap} title="换地图">
+      <button type="button" className="hud-btn m-round" onClick={onSwitchMap} title="换地图" aria-label="换地图">
         🗺️
       </button>
-      <button type="button" className="hud-btn warn m-round" onClick={onSwitchWorld} title="换世界观">
+      <button type="button" className="hud-btn warn m-round" onClick={onSwitchWorld} title="换世界观" aria-label="换世界观">
         🌍
       </button>
     </div>
   );
 }
 
+// 竖屏：当前区域 + 调整标记（小地图下方）
 function CampusPill({ activeCampus, editing, onToggleEdit }) {
   return (
     <div className="m-campus">
@@ -45,45 +48,145 @@ function CampusPill({ activeCampus, editing, onToggleEdit }) {
   );
 }
 
-function UserPanel({ user, onProfile, onAchievements, onLeaderboard }) {
+// 用户排名表（迷你排行榜，取前 N 名）
+function LeaderboardMini({ onOpen, limit = 5 }) {
+  const [list, setList] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api
+      .leaderboard()
+      .then((l) => {
+        if (active) setList(l.slice(0, limit));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [limit]);
+
   return (
-    <div className="m-user">
+    <div className="hud-panel m-rank">
+      <button type="button" className="m-rank-head" onClick={onOpen} title="查看完整排行榜">
+        🏆 排行榜
+      </button>
+      {!loaded && <div className="m-rank-empty">加载中…</div>}
+      {loaded && list.length === 0 && <div className="m-rank-empty">暂无玩家</div>}
+      {list.map((p, i) => (
+        <div key={p.id} className={'m-rank-row' + (i < 3 ? ` top${i + 1}` : '')}>
+          <span className="m-rank-idx">{i + 1}</span>
+          <span className="m-rank-name">{p.avatar || '🎓'} {p.nickname}</span>
+          <span className="m-rank-exp">{p.exp}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// 竖屏右侧统一侧边栏：用户学习 → 用户排名表 → 背包 → 任务设置
+function Sidebar({ user, onProfile, onAchievements, onLeaderboard, onTasks, onBag, onSettings }) {
+  return (
+    <div className="m-sidebar">
       <div className="hud-panel m-user-card">
-        <div className="m-avatar">{user?.avatar || '🎓'}</div>
-        <div className="m-user-info">
-          <div className="m-nick">{user?.nickname || '未登录'}</div>
-          <div className="m-level">Lv{user?.level ?? 1} · {user?.exp ?? 0} XP</div>
-        </div>
-        <div className="m-chips">
-          <button type="button" className="hud-icon-chip" title="成就" onClick={onAchievements}>👑</button>
-          <button type="button" className="hud-icon-chip" title="成就" onClick={onAchievements}>🪶</button>
-        </div>
+        <button type="button" className="m-user-main" onClick={onProfile} title="用户信息" aria-label="用户信息">
+          <span className="m-avatar">{user?.avatar || '🎓'}</span>
+          <span className="m-user-info">
+            <span className="m-nick">{user?.nickname || '未登录'}</span>
+            <span className="m-level">Lv{user?.level ?? 1} · {user?.exp ?? 0} XP</span>
+          </span>
+        </button>
+        <button type="button" className="hud-icon-chip" title="成就" aria-label="成就" onClick={onAchievements}>
+          👑
+        </button>
       </div>
-      <div className="m-user-btns">
-        <button type="button" className="hud-btn" onClick={onProfile}>👤 用户信息</button>
-        <button type="button" className="hud-btn active" onClick={onLeaderboard}>🏆 排行榜</button>
+
+      <LeaderboardMini onOpen={onLeaderboard} />
+
+      <button type="button" className="hud-btn warn m-side-btn" onClick={onBag} title="背包" aria-label="背包">
+        🎒 背包
+      </button>
+
+      <div className="m-side-row">
+        <button type="button" className="hud-btn" onClick={onTasks} title="任务" aria-label="任务">
+          ✅ 任务
+        </button>
+        <button type="button" className="hud-btn warn" onClick={onSettings} title="设置" aria-label="设置">
+          ⚙️ 设置
+        </button>
       </div>
     </div>
   );
 }
 
-function QuickButtons({ onTasks, onBag, onSettings }) {
+// 横屏：顶部极窄状态栏（P0 信息：校区 + 等级/经验 + 编辑）
+function StatusBar({ activeCampus, user, editing, onToggleEdit }) {
   return (
-    <div className="m-quick">
-      <button type="button" className="hud-btn" onClick={onTasks}>✅ 任务</button>
-      <button type="button" className="hud-btn warn" onClick={onBag}>🎒 背包</button>
-      <button type="button" className="hud-btn warn" onClick={onSettings}>⚙️ 设置</button>
+    <div className="m-statusbar">
+      <div className="hud-panel-soft m-statusbar-inner">
+        <span className="m-status-name">📍 {activeCampus?.name || '加载中…'}</span>
+        <span className="m-status-sep">·</span>
+        <span className="m-status-level">Lv{user?.level ?? 1} {user?.exp ?? 0} XP</span>
+        <button type="button" className="hud-btn m-status-edit" onClick={onToggleEdit} title={editing ? '完成调整' : '调整标记'}>
+          {editing ? '✅' : '✏️'}
+        </button>
+      </div>
     </div>
   );
 }
 
-function Zoom({ zoom, onZoom }) {
-  const step = (d) => onZoom(Math.min(4, Math.max(0.5, Math.round((zoom + d) * 10) / 10)));
+// 横屏：右上角 用户学习 + 用户排名表（可整体折叠为一个图标）
+function RightPanel({ user, onProfile, onAchievements, onLeaderboard, onGacha, collapsed, onToggleCollapse }) {
+  if (collapsed) {
+    return (
+      <div className="m-rightpanel collapsed">
+        <button type="button" className="hud-btn m-rightpanel-toggle" onClick={onToggleCollapse} title="展开用户面板" aria-label="展开用户面板">
+          👤
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="m-zoom">
-      <button type="button" className="hud-btn" onClick={() => step(0.2)}>＋</button>
-      <span className="m-zoom-val">{Math.round(zoom * 100)}%</span>
-      <button type="button" className="hud-btn" onClick={() => step(-0.2)}>－</button>
+    <div className="m-rightpanel">
+      <div className="hud-panel m-user-card">
+        <button type="button" className="m-user-main" onClick={onProfile} title="用户信息" aria-label="用户信息">
+          <span className="m-avatar">{user?.avatar || '🎓'}</span>
+          <span className="m-user-info">
+            <span className="m-nick">{user?.nickname || '未登录'}</span>
+            <span className="m-level">Lv{user?.level ?? 1} · {user?.exp ?? 0} XP</span>
+          </span>
+        </button>
+        <button type="button" className="hud-icon-chip" title="成就" aria-label="成就" onClick={onAchievements}>
+          👑
+        </button>
+      </div>
+
+      <LeaderboardMini onOpen={onLeaderboard} limit={3} />
+
+      <button type="button" className="hud-btn m-gacha-inline" onClick={onGacha} title="卡池 · 召唤">
+        ✨ 卡池 · 召唤
+      </button>
+
+      <button type="button" className="m-rightpanel-collapse" onClick={onToggleCollapse} title="收起">
+        收起 ▾
+      </button>
+    </div>
+  );
+}
+
+// 横屏：右下角 背包 + 任务设置（两个大圆形触摸按钮）
+function CornerButtons({ onTasks, onBag }) {
+  return (
+    <div className="m-cornerbtns">
+      <button type="button" className="hud-btn warn m-corner" onClick={onBag} title="背包" aria-label="背包">
+        🎒
+      </button>
+      <button type="button" className="hud-btn m-corner" onClick={onTasks} title="任务设置" aria-label="任务设置">
+        📋
+      </button>
     </div>
   );
 }
@@ -93,7 +196,6 @@ export default function MobileHud({
   activeCampus,
   user,
   editing,
-  zoom,
   onToggleMode,
   onSwitchMap,
   onSwitchWorld,
@@ -105,21 +207,42 @@ export default function MobileHud({
   onProfile,
   onLeaderboard,
   onAchievements,
-  onZoom,
 }) {
   const slug = activeCampus?.slug || 'minglun';
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
 
   return (
     <div className={'mobile-hud ' + mode}>
       <Minimap slug={slug} mode={mode} onToggleMode={onToggleMode} />
       <MapButtons onSwitchMap={onSwitchMap} onSwitchWorld={onSwitchWorld} />
+
+      {/* 竖屏布局 */}
       <CampusPill activeCampus={activeCampus} editing={editing} onToggleEdit={onToggleEdit} />
-      <UserPanel user={user} onProfile={onProfile} onAchievements={onAchievements} onLeaderboard={onLeaderboard} />
-      <QuickButtons onTasks={onTasks} onBag={onBag} onSettings={onSettings} />
-      <Zoom zoom={zoom} onZoom={onZoom} />
+      <Sidebar
+        user={user}
+        onProfile={onProfile}
+        onAchievements={onAchievements}
+        onLeaderboard={onLeaderboard}
+        onTasks={onTasks}
+        onBag={onBag}
+        onSettings={onSettings}
+      />
       <button type="button" className="gacha-btn m-gacha-btn" onClick={onGacha} title="卡池 · 召唤">
         <span>✨</span>
       </button>
+
+      {/* 横屏 HUD */}
+      <StatusBar activeCampus={activeCampus} user={user} editing={editing} onToggleEdit={onToggleEdit} />
+      <RightPanel
+        user={user}
+        onProfile={onProfile}
+        onAchievements={onAchievements}
+        onLeaderboard={onLeaderboard}
+        onGacha={onGacha}
+        collapsed={panelCollapsed}
+        onToggleCollapse={() => setPanelCollapsed((v) => !v)}
+      />
+      <CornerButtons onTasks={onTasks} onBag={onBag} />
     </div>
   );
 }

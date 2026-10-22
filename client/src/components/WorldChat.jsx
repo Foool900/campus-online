@@ -4,7 +4,7 @@ import { socket } from '../socket.js';
 import { useUser } from '../UserContext.jsx';
 
 // 底部中央的「世界频道」：全局聊天，所有同学可见（Socket.IO 实时）
-export default function WorldChat() {
+export default function WorldChat({ collapsible = false, collapsed = false, onToggleCollapse }) {
   const { user } = useUser();
   const [channel, setChannel] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -91,12 +91,22 @@ export default function WorldChat() {
     setInput('');
   };
 
+  const isCollapsed = collapsible && collapsed;
+
   return (
-    <div className="hud-panel world-chat">
-      <div className="wc-head">
+    <div className={'hud-panel world-chat' + (isCollapsed ? ' collapsed' : '')}>
+      <div
+        className="wc-head"
+        role={collapsible ? 'button' : undefined}
+        tabIndex={collapsible ? 0 : undefined}
+        aria-expanded={collapsible ? !collapsed : undefined}
+        onClick={collapsible ? onToggleCollapse : undefined}
+        onKeyDown={collapsible ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleCollapse(); } } : undefined}
+      >
         <span style={{ fontSize: 13, fontWeight: 600 }}>🌐 世界频道</span>
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>· 全校在线</span>
         {error && <span style={{ fontSize: 11, color: '#fca5a5', marginLeft: 'auto' }}>{error}</span>}
+        {collapsible && <span className="wc-chevron" style={{ marginLeft: 'auto' }}>{collapsed ? '▲' : '▼'}</span>}
       </div>
 
       <div className="wc-messages" ref={listRef}>

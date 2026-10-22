@@ -19,8 +19,8 @@ import {
 
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 
-// 判断是否为手机窄屏（横屏手机也归入此断点）
-function useIsMobile(query = '(max-width: 820px)') {
+// 判断是否为手机窄屏（覆盖横屏手机：主流手机横屏宽度 ≤ 932px）
+function useIsMobile(query = '(max-width: 932px)') {
   const [matches, setMatches] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia(query).matches : false
   );
@@ -34,17 +34,60 @@ function useIsMobile(query = '(max-width: 820px)') {
   return matches;
 }
 
+// 物理方向：竖屏（宽 < 高）用于「请旋转」遮罩与横屏 HUD 启停
+function useIsPortrait() {
+  const [portrait, setPortrait] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < window.innerHeight : false
+  );
+  useEffect(() => {
+    const onResize = () => setPortrait(window.innerWidth < window.innerHeight);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+  return portrait;
+}
+
+// 尝试锁定横屏（不支持 / 无权限时静默失败；物理旋转仍由系统控制）
+function tryLockLandscape() {
+  try {
+    if (typeof screen === 'undefined' || !screen.orientation) return;
+    const lock = screen.orientation.lock;
+    if (typeof lock !== 'function') return;
+    const r = lock.call(screen.orientation, 'landscape');
+    if (r && typeof r.catch === 'function') r.catch(() => {});
+  } catch {
+    /* 静默失败 */
+  }
+}
+
 // 游戏 HUD 外壳：全屏地图常驻，四周悬浮面板，页面以覆盖式玻璃面板承载
 export default function Layout({ children }) {
   const { user } = useUser();
   const navigate = useNavigate();
 
-  // 手机适配：窄屏走 MobileHud，横屏/竖屏由小地图按钮手动切换
+  // 手机适配：默认横屏 HUD；横 / 竖屏布局由小地图按钮手动切换（不改变物理旋转）
   const isMobile = useIsMobile();
-  const [mode, setMode] = useState(() =>
-    typeof window !== 'undefined' && window.innerWidth < window.innerHeight ? 'portrait' : 'landscape'
-  );
-  const toggleMode = () => setMode((m) => (m === 'portrait' ? 'landscape' : 'portrait'));
+  const isPhysicalPortrait = useIsPortrait();
+  const [mode, setMode] = useState('landscape');
+  const [chatCollapsed, setChatCollapsed] = useState(true);
+  const toggleMode = () => {
+    const next = mode === 'portrait' ? 'landscape' : 'portrait';
+    setMode(next);
+    if (next === 'landscape') tryLockLandscape();
+  };
+  const enterPortrait = () => setMode('portrait');
+
+  // 竖屏遮罩：横屏模式下手机仍竖屏时，提示旋转（切到竖屏布局或旋转后消失）
+  const showMask = isMobile && mode === 'landscape' && isPhysicalPortrait;
+
+  // 进入手机端时尝试锁定横屏（无用户手势时可能失败，静默）
+  useEffect(() => {
+    if (isMobile) tryLockLandscape();
+  }, [isMobile]);
 
   // 地图数据
   const [campuses, setCampuses] = useState([]);
@@ -100,14 +143,16 @@ export default function Layout({ children }) {
     }
   };
 
-  // 平移：仅在空白处拖动（避开地点标记）
+  // 平移（鼠标拖拽）：仅在空白处拖动（避开地点标记）；触摸交给下方 touch 手势处理
   const onPointerDown = (e) => {
+    if (e.pointerType === 'touch') return;
     if (editing) return;
     if (e.target.closest && e.target.closest('.area-marker')) return;
     panRef.current = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y, moved: false };
     setPanning(true);
   };
   const onPointerMove = (e) => {
+    if (e.pointerType === 'touch') return;
     const p = panRef.current;
     if (!p) return;
     const dx = e.clientX - p.sx;
@@ -115,13 +160,59 @@ export default function Layout({ children }) {
     if (!p.moved && Math.abs(dx) + Math.abs(dy) > 3) p.moved = true;
     if (p.moved) setView((v) => ({ ...v, x: p.ox + dx, y: p.oy + dy }));
   };
-  const onPointerUp = () => {
+  const onPointerUp = (e) => {
+    if (e.pointerType === 'touch') return;
     panRef.current = null;
     setPanning(false);
   };
   const onWheel = (e) => {
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
     setView((v) => ({ ...v, zoom: clamp(v.zoom * factor, 0.5, 4) }));
+  };
+
+  // 触摸手势：单指平移、双指捏合缩放（替代移动端缩放按钮）
+  const touchRef = useRef(null);
+  const onTouchStart = (e) => {
+    if (editing) return;
+    if (e.target.closest && e.target.closest('.area-marker')) return;
+    const t = e.touches;
+    if (t.length === 1) {
+      touchRef.current = { mode: 'pan', sx: t[0].clientX, sy: t[0].clientY, ox: view.x, oy: view.y, moved: false };
+      setPanning(true);
+    } else if (t.length === 2) {
+      const dx = t[0].clientX - t[1].clientX;
+      const dy = t[0].clientY - t[1].clientY;
+      touchRef.current = { mode: 'pinch', dist: Math.hypot(dx, dy), zoom: view.zoom };
+      setPanning(false);
+    }
+  };
+  const onTouchMove = (e) => {
+    const s = touchRef.current;
+    if (!s) return;
+    const t = e.touches;
+    if (s.mode === 'pan' && t.length === 1) {
+      const dx = t[0].clientX - s.sx;
+      const dy = t[0].clientY - s.sy;
+      if (!s.moved && Math.abs(dx) + Math.abs(dy) > 3) s.moved = true;
+      if (s.moved) setView((v) => ({ ...v, x: s.ox + dx, y: s.oy + dy }));
+    } else if (s.mode === 'pinch' && t.length === 2) {
+      const dx = t[0].clientX - t[1].clientX;
+      const dy = t[0].clientY - t[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (s.dist > 0) setView((v) => ({ ...v, zoom: clamp(s.zoom * (dist / s.dist), 0.5, 4) }));
+    }
+  };
+  const onTouchEnd = (e) => {
+    const s = touchRef.current;
+    const t = e.touches;
+    if (t.length === 0) {
+      touchRef.current = null;
+      setPanning(false);
+    } else if (s && s.mode === 'pinch' && t.length === 1) {
+      // 捏合抬起到单指，接着平移
+      touchRef.current = { mode: 'pan', sx: t[0].clientX, sy: t[0].clientY, ox: view.x, oy: view.y, moved: false };
+      setPanning(true);
+    }
   };
 
   // HUD 动作
@@ -152,6 +243,10 @@ export default function Layout({ children }) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onWheel={onWheel}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
       >
         <div
           className="map-transform"
@@ -176,7 +271,6 @@ export default function Layout({ children }) {
           activeCampus={activeCampus}
           user={user}
           editing={editing}
-          zoom={view.zoom}
           onToggleMode={toggleMode}
           onSwitchMap={switchMap}
           onSwitchWorld={switchWorld}
@@ -188,7 +282,6 @@ export default function Layout({ children }) {
           onProfile={() => navigate('/profile')}
           onLeaderboard={() => navigate('/leaderboard')}
           onAchievements={() => navigate('/achievements')}
-          onZoom={setZoom}
         />
       ) : (
         <>
@@ -213,9 +306,19 @@ export default function Layout({ children }) {
         </>
       )}
 
-      {/* 世界频道：桌面/横屏居中，竖屏贴左下角 */}
-      <div className={'world-chat-wrap' + (isMobile && mode === 'portrait' ? ' portrait' : '')}>
-        <WorldChat />
+      {/* 世界频道：桌面居中、竖屏左下角、横屏左下角可折叠 */}
+      <div
+        className={
+          'world-chat-wrap' +
+          (isMobile && mode === 'portrait' ? ' portrait' : '') +
+          (isMobile && mode === 'landscape' ? ' landscape' : '')
+        }
+      >
+        <WorldChat
+          collapsible={isMobile && mode === 'landscape' && !isPhysicalPortrait}
+          collapsed={chatCollapsed}
+          onToggleCollapse={() => setChatCollapsed((v) => !v)}
+        />
       </div>
 
       {/* 覆盖式页面（任务/排行榜/成就/我的） */}
@@ -229,6 +332,17 @@ export default function Layout({ children }) {
       {error && (
         <div className="toast" style={{ background: 'rgba(120, 22, 22, 0.94)' }}>
           {error}
+        </div>
+      )}
+
+      {/* 竖屏遮罩：横屏模式下手机仍竖屏时提示旋转（切到竖屏布局或旋转后消失） */}
+      {showMask && (
+        <div className="portrait-mask">
+          <div className="portrait-mask-icon">📱</div>
+          <div className="portrait-mask-text">请旋转至横屏以获得最佳游戏体验</div>
+          <button type="button" className="hud-btn portrait-mask-btn" onClick={enterPortrait}>
+            进入竖屏布局
+          </button>
         </div>
       )}
     </div>
