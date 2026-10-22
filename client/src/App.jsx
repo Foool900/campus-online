@@ -1,54 +1,72 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { api } from './api.js';
+import { socket } from './socket.js';
 import { UserContext } from './UserContext.jsx';
 import Layout from './components/Layout.jsx';
-import NicknameModal from './components/NicknameModal.jsx';
+import LoginModal from './components/LoginModal.jsx';
 import TasksPage from './pages/TasksPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import AchievementsPage from './pages/AchievementsPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import ActivityDetailPage from './pages/ActivityDetailPage.jsx';
+import SettingsPage from './pages/SettingsPage.jsx';
 
-const STORAGE_KEY = 'campus_user';
-
-function loadStoredUser() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
+const TOKEN_KEY = 'campus_token';
 
 export default function App() {
-  const [user, setUserState] = useState(loadStoredUser);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(() =>
+    typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null
+  );
+  const [authReady, setAuthReady] = useState(false);
 
-  const saveUser = useCallback((u) => {
-    setUserState(u);
-    if (u) localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-    else localStorage.removeItem(STORAGE_KEY);
-  }, []);
-
-  // 挂载时向后端刷新一次，同步经验值/等级；若用户已被重置则重新引导
+  // 登录态恢复：有 token 就拉取当前用户；否则视为未登录
   useEffect(() => {
-    const stored = loadStoredUser();
-    if (!stored) return;
+    if (!token) {
+      setUser(null);
+      setAuthReady(true);
+      return;
+    }
     api
-      .user(stored.id)
-      .then((fresh) => saveUser(fresh))
-      .catch((err) => {
-        if (err.status === 404) saveUser(null);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .authMe()
+      .then(setUser)
+      .catch(() => {
+        localStorage.removeItem(TOKEN_KEY);
+        setToken(null);
+        setUser(null);
+      })
+      .finally(() => setAuthReady(true));
+  }, [token]);
+
+  // 登录态变化时连接 / 断开 Socket（握手带 token 鉴权）
+  useEffect(() => {
+    if (token) socket.connect();
+    else socket.disconnect();
+  }, [token]);
+
+  const applyAuth = useCallback((t, u) => {
+    localStorage.setItem(TOKEN_KEY, t);
+    setToken(t);
+    setUser(u);
   }, []);
 
-  const value = useMemo(() => ({ user, setUser: saveUser }), [user, saveUser]);
+  const logout = useCallback(() => {
+    api.authLogout().catch(() => {});
+    localStorage.removeItem(TOKEN_KEY);
+    setToken(null);
+    setUser(null);
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, setUser, token, applyAuth, logout }),
+    [user, token, applyAuth, logout]
+  );
 
   return (
     <BrowserRouter>
       <UserContext.Provider value={value}>
-        <Layout>
+        <Layout key={token || 'anon'}>
           <Routes>
             <Route path="/" element={null} />
             <Route path="/tasks" element={<TasksPage />} />
@@ -56,10 +74,11 @@ export default function App() {
             <Route path="/achievements" element={<AchievementsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/activity/:id" element={<ActivityDetailPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={null} />
           </Routes>
         </Layout>
-        {!user && <NicknameModal />}
+        {authReady && !token && <LoginModal onAuth={applyAuth} />}
       </UserContext.Provider>
     </BrowserRouter>
   );

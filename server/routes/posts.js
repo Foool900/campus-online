@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, nowIso } from '../db.js';
 import { onlineCount } from '../presence.js';
+import { requireRole } from '../auth.js';
 
 const router = Router();
 
@@ -161,23 +162,20 @@ router.get('/channels/:channelId/posts', (req, res) => {
   if (!channel) {
     return res.status(404).json({ error: '频道不存在' });
   }
-  const userId = req.query.userId ? Number(req.query.userId) : 0;
+  const userId = req.user.id;
   const posts = db.prepare(`${SELECT_POST} WHERE p.channel_id = ? ORDER BY p.id DESC`).all(channelId);
   res.json(posts.map((p) => ({ ...p, ...cardSummary(p.id, userId) })));
 });
 
 // POST /api/channels/:channelId/posts —— 发布活动帖（body: { userId, title, content, category }）
-router.post('/channels/:channelId/posts', (req, res) => {
+router.post('/channels/:channelId/posts', requireRole('student', 'admin'), (req, res) => {
   const channelId = Number(req.params.channelId);
   if (!Number.isInteger(channelId)) {
     return res.status(400).json({ error: '无效的频道 ID' });
   }
 
-  const { userId, title, content, category } = req.body || {};
-  const uid = Number(userId);
-  if (!Number.isInteger(uid)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+  const { title, content, category } = req.body || {};
+  const uid = req.user.id;
 
   const t = typeof title === 'string' ? title.trim() : '';
   if (!t) {
@@ -221,8 +219,8 @@ router.get('/posts/:id', (req, res) => {
   }
 
   const participants = listParticipants(id);
-  const userId = req.query.userId ? Number(req.query.userId) : 0;
-  const role = Number.isInteger(userId) && userId > 0 ? getRole(id, userId) : 'guest';
+  const userId = req.user.id;
+  const role = getRole(id, userId);
 
   res.json({
     post,
@@ -234,16 +232,12 @@ router.get('/posts/:id', (req, res) => {
 });
 
 // POST /api/posts/:id/join —— 报名/加入活动（幂等；仅「报名中」状态可加入）
-router.post('/posts/:id/join', (req, res) => {
+router.post('/posts/:id/join', requireRole('student', 'admin'), (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: '无效的活动 ID' });
   }
-  const { userId } = req.body || {};
-  const uid = Number(userId);
-  if (!Number.isInteger(uid)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+  const uid = req.user.id;
   const post = db.prepare('SELECT id, user_id, status FROM posts WHERE id = ?').get(id);
   if (!post) return res.status(404).json({ error: '活动不存在' });
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(uid);
@@ -271,11 +265,8 @@ router.patch('/posts/:id/status', (req, res) => {
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: '无效的活动 ID' });
   }
-  const { userId, status } = req.body || {};
-  const uid = Number(userId);
-  if (!Number.isInteger(uid)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+  const { status } = req.body || {};
+  const uid = req.user.id;
   const post = db.prepare('SELECT id, user_id, status FROM posts WHERE id = ?').get(id);
   if (!post) return res.status(404).json({ error: '活动不存在' });
   if (post.user_id !== uid) {
@@ -332,8 +323,8 @@ router.get('/posts/:id/notes', (req, res) => {
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: '无效的活动 ID' });
   }
-  const userId = req.query.userId ? Number(req.query.userId) : 0;
-  const role = userId > 0 ? getRole(id, userId) : 'guest';
+  const userId = req.user.id;
+  const role = getRole(id, userId);
 
   let rows = [];
   if (role === 'admin') {
@@ -352,11 +343,8 @@ router.post('/posts/:id/notes', (req, res) => {
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: '无效的活动 ID' });
   }
-  const { userId, content, visibleToParticipants } = req.body || {};
-  const uid = Number(userId);
-  if (!Number.isInteger(uid)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+  const { content, visibleToParticipants } = req.body || {};
+  const uid = req.user.id;
   const post = db.prepare('SELECT id, user_id FROM posts WHERE id = ?').get(id);
   if (!post) return res.status(404).json({ error: '活动不存在' });
   if (post.user_id !== uid) {

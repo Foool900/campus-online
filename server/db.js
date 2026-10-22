@@ -20,12 +20,14 @@ export const nowIso = () => new Date().toISOString();
 export function initDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      nickname   TEXT    NOT NULL,
-      college    TEXT    NOT NULL DEFAULT '',
-      avatar     TEXT    NOT NULL DEFAULT '🎓',
-      exp        INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT    NOT NULL
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      nickname      TEXT    NOT NULL,
+      college       TEXT    NOT NULL DEFAULT '',
+      avatar        TEXT    NOT NULL DEFAULT '🎓',
+      exp           INTEGER NOT NULL DEFAULT 0,
+      password_hash TEXT,
+      role          TEXT    NOT NULL DEFAULT 'member',
+      created_at    TEXT    NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS campuses (
@@ -176,6 +178,28 @@ export function initDb() {
       metric      TEXT    NOT NULL,
       threshold   INTEGER NOT NULL
     );
+
+    -- 登录会话（token 凭证）
+    CREATE TABLE IF NOT EXISTS sessions (
+      token      TEXT    PRIMARY KEY,
+      user_id    INTEGER NOT NULL,
+      created_at TEXT    NOT NULL,
+      expires_at TEXT    NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- 学员身份认证申请（人工审核）
+    CREATE TABLE IF NOT EXISTS verifications (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL,
+      images       TEXT    NOT NULL DEFAULT '[]',
+      status       TEXT    NOT NULL DEFAULT 'pending',
+      submitted_at TEXT    NOT NULL,
+      reviewed_by  INTEGER,
+      reviewed_at  TEXT,
+      note         TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // 迁移：老库补 hidden 列（世界频道使用隐藏区域承载）
@@ -213,4 +237,9 @@ export function initDb() {
   if (!postCols.includes('status')) {
     db.exec("ALTER TABLE posts ADD COLUMN status TEXT NOT NULL DEFAULT 'open';");
   }
+
+  // 迁移：users 补 password_hash / role（登录 + 角色）
+  const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!userCols.includes('password_hash')) db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT;');
+  if (!userCols.includes('role')) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member';");
 }

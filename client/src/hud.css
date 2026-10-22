@@ -1241,3 +1241,28 @@ input, select, textarea { color: var(--text); }
   white-space: nowrap;
 }
 .act-ctx-menu button:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* 登录弹窗切换链接 / 个人页角色 */
+.modal-switch { border: none; background: none; color: #7dd3fc; font-size: 13px; cursor: pointer; padding: 0; margin-top: 6px; }
+.modal-switch:hover { text-decoration: underline; }
+.profile-role { color: #7dd3fc; font-size: 13px; }
+
+/* 设置页：身份认证 / 待审核 / 管理员管理 */
+.verify-desc { color: var(--muted); font-size: 13px; }
+.verify-images { display: flex; gap: 16px; margin: 10px 0; flex-wrap: wrap; }
+.verify-slot { display: flex; flex-direction: column; gap: 6px; width: 200px; }
+.verify-slot label { color: var(--muted); font-size: 13px; }
+.verify-slot img { width: 100%; max-height: 140px; object-fit: contain; border-radius: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); }
+.verify-slot input[type='file'] { font-size: 12px; color: var(--muted); }
+.verify-empty { width: 100%; height: 80px; display: flex; align-items: center; justify-content: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; font-size: 12px; }
+.verify-images-sm { display: flex; gap: 6px; margin-top: 6px; }
+.verify-images-sm img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
+.verify-app { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.verify-app-info strong { color: #fff; }
+.verify-app-time { font-size: 12px; color: var(--muted); }
+.verify-app-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.admin-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-item { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 13px; color: rgba(255, 255, 255, 0.85); }
+.admin-add { display: flex; gap: 8px; margin-top: 10px; }
+.admin-add input { flex: 1; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; color: #fff; }
+.admin-add input:focus { border-color: rgba(56, 189, 248, 0.6); }

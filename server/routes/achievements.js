@@ -32,10 +32,7 @@ function metricValue(userId, metric) {
 
 // GET /api/achievements?userId=... —— 成就列表（含当前进度与解锁状态）
 router.get('/achievements', (req, res) => {
-  const userId = Number(req.query.userId);
-  if (!Number.isInteger(userId)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+  const userId = req.user.id;
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
   if (!user) {
     return res.status(404).json({ error: '用户不存在' });

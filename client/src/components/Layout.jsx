@@ -278,7 +278,7 @@ export default function Layout({ children }) {
           onGacha={gacha}
           onTasks={() => navigate('/tasks')}
           onBag={() => say('「背包」还未开发')}
-          onSettings={() => say('「设置」还未开发')}
+          onSettings={() => navigate('/settings')}
           onProfile={() => navigate('/profile')}
           onLeaderboard={() => navigate('/leaderboard')}
           onAchievements={() => navigate('/achievements')}
@@ -300,7 +300,7 @@ export default function Layout({ children }) {
             activeCampus={activeCampus}
             onTasks={() => navigate('/tasks')}
             onBag={() => say('「背包」还未开发')}
-            onSettings={() => say('「设置」还未开发')}
+            onSettings={() => navigate('/settings')}
           />
           <ZoomControl zoom={view.zoom} onZoom={setZoom} />
         </>

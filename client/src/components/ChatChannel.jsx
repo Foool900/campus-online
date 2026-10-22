@@ -490,7 +490,7 @@ export default function ChatChannel({
                   <button className="act-readcount" onClick={() => showReads(m)}>已读 {m.readBy.length} 人</button>
                 )}
 
-                {!isTemp && !recalled && (
+                {canSpeak && !isTemp && !recalled && (
                   <div className="act-msg-actions">
                     <button onClick={() => setReactFor(m.id)} title="表情回应">😀</button>
                     <button onClick={() => startReply(m)} title="回复">↩️</button>

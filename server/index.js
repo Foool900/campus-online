@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { initDb } from './db.js';
-import { seedIfEmpty, ensureWorldChannel } from './seed.js';
+import { seedIfEmpty, ensureWorldChannel, ensureAdmin } from './seed.js';
 import { bumpPresence, presenceList } from './presence.js';
 import areasRouter from './routes/areas.js';
 import channelsRouter from './routes/channels.js';
@@ -17,11 +17,15 @@ import postsRouter from './routes/posts.js';
 import achievementsRouter from './routes/achievements.js';
 import worldRouter from './routes/world.js';
 import stickersRouter from './routes/stickers.js';
+import authRouter from './routes/auth.js';
+import verificationRouter from './routes/verification.js';
+import { requireAuth, getSessionUser } from './auth.js';
 
 // 初始化数据库表结构与种子数据（仅在空库时写入）
 initDb();
 const seeded = seedIfEmpty();
 ensureWorldChannel();
+ensureAdmin();
 if (seeded) {
   console.log('[db] 已写入种子数据：2 个校区 / 区域与频道 / 示例消息与帖子 / 成就');
 }
@@ -41,7 +45,13 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'campus-online-server', time: new Date().toISOString() });
 });
 
-// 业务路由
+// 认证（公开，无需登录）
+app.use('/api', authRouter);
+
+// 全局鉴权：其余所有 /api 都需要登录
+app.use('/api', requireAuth);
+
+// 业务路由（登录后可用）
 app.use('/api', areasRouter);
 app.use('/api', channelsRouter);
 app.use('/api', messagesRouter);
@@ -52,6 +62,7 @@ app.use('/api', postsRouter);
 app.use('/api', achievementsRouter);
 app.use('/api', worldRouter);
 app.use('/api', stickersRouter);
+app.use('/api', verificationRouter);
 
 // 未匹配的 /api 路由
 app.use('/api', (req, res) => {
@@ -83,7 +94,7 @@ if (fs.existsSync(clientDist)) {
 // 统一错误处理
 app.use((err, req, res, next) => {
   if (err && err.type === 'entity.too.large') {
-    return res.status(413).json({ error: '文件过大（单张最多 2MB）' });
+    return res.status(413).json({ error: '文件过大' });
   }
   console.error('[server] 未处理错误:', err);
   res.status(500).json({ error: '服务器内部错误' });
@@ -114,33 +125,41 @@ function untrackPresence(socket, type, id, userId) {
   broadcastPresence(type, id);
 }
 
+// Socket.IO 鉴权：握手带 token，未登录拒绝连接
+io.use((socket, next) => {
+  const user = getSessionUser(socket.handshake.auth?.token);
+  if (!user) return next(new Error('未登录'));
+  socket.data.user = user;
+  next();
+});
+
 // Socket.IO：房间名 channel:{channelId} / post:{postId}（均带在线成员 presence）
 io.on('connection', (socket) => {
-  socket.on('join:channel', ({ channelId, userId }) => {
+  socket.on('join:channel', ({ channelId }) => {
     const cid = Number(channelId);
     if (!Number.isInteger(cid)) return;
     socket.join(`channel:${cid}`);
-    trackPresence(socket, 'chat', cid, Number(userId));
+    trackPresence(socket, 'chat', cid, socket.data.user.id);
   });
 
-  socket.on('leave:channel', ({ channelId, userId }) => {
+  socket.on('leave:channel', ({ channelId }) => {
     const cid = Number(channelId);
     if (!Number.isInteger(cid)) return;
     socket.leave(`channel:${cid}`);
-    untrackPresence(socket, 'chat', cid, Number(userId));
+    untrackPresence(socket, 'chat', cid, socket.data.user.id);
   });
 
-  socket.on('join:post', ({ postId, userId }) => {
+  socket.on('join:post', ({ postId }) => {
     const pid = Number(postId);
     if (!Number.isInteger(pid)) return;
     socket.join(`post:${pid}`);
-    trackPresence(socket, 'activity', pid, Number(userId));
+    trackPresence(socket, 'activity', pid, socket.data.user.id);
   });
-  socket.on('leave:post', ({ postId, userId }) => {
+  socket.on('leave:post', ({ postId }) => {
     const pid = Number(postId);
     if (!Number.isInteger(pid)) return;
     socket.leave(`post:${pid}`);
-    untrackPresence(socket, 'activity', pid, Number(userId));
+    untrackPresence(socket, 'activity', pid, socket.data.user.id);
   });
 
   socket.on('disconnect', () => {
@@ -155,7 +174,12 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('message:send', ({ channelId, postId, userId, content, type, replyTo, mentions }, ack) => {
+  socket.on('message:send', ({ channelId, postId, content, type, replyTo, mentions }, ack) => {
+    const userId = socket.data.user?.id;
+    if (!Number.isInteger(userId)) {
+      if (typeof ack === 'function') ack({ ok: false, error: '未登录' });
+      return;
+    }
     const pid = postId ? Number(postId) : null;
     const result = Number.isInteger(pid)
       ? insertConversationMessage('activity', pid, userId, { type, content, replyTo, mentions })

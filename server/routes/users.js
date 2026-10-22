@@ -15,39 +15,10 @@ function mapUser(row) {
     avatar: row.avatar,
     exp: row.exp,
     level: levelOf(row.exp),
+    role: row.role,
     createdAt: row.created_at,
   };
 }
-
-// POST /api/users —— 首次创建 / 复用匿名用户
-router.post('/users', (req, res) => {
-  const { nickname, college } = req.body || {};
-  const name = typeof nickname === 'string' ? nickname.trim() : '';
-  if (!name) {
-    return res.status(400).json({ error: '昵称不能为空' });
-  }
-  if (name.length < 2 || name.length > 20) {
-    return res.status(400).json({ error: '昵称长度需为 2-20 个字符' });
-  }
-
-  const col = typeof college === 'string' ? college.trim() : '';
-
-  // 本地原型的简化复用策略：同名用户直接复用，避免重复创建
-  const existing = db.prepare('SELECT * FROM users WHERE nickname = ?').get(name);
-  if (existing) {
-    if (col && col !== existing.college) {
-      db.prepare('UPDATE users SET college = ? WHERE id = ?').run(col, existing.id);
-      existing.college = col;
-    }
-    return res.json(mapUser(existing));
-  }
-
-  const info = db
-    .prepare('INSERT INTO users (nickname, college, avatar, exp, created_at) VALUES (?, ?, ?, 0, ?)')
-    .run(name, col, '🎓', nowIso());
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
-  res.status(201).json(mapUser(row));
-});
 
 // GET /api/users/:id —— 单个用户信息
 router.get('/users/:id', (req, res) => {
@@ -71,6 +42,9 @@ router.patch('/users/:id', (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   if (!user) {
     return res.status(404).json({ error: '用户不存在' });
+  }
+  if (req.user.id !== id) {
+    return res.status(403).json({ error: '只能修改自己的资料' });
   }
 
   const { nickname, college } = req.body || {};

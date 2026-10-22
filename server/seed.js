@@ -270,3 +270,17 @@ export function ensureWorldChannel() {
   const chInfo = db.prepare('INSERT INTO channels (area_id, name) VALUES (?, ?)').run(Number(areaInfo.lastInsertRowid), '世界频道');
   return Number(chInfo.lastInsertRowid);
 }
+
+// 幂等：确保管理员账号存在（昵称可用环境变量 ADMIN_NICKNAME 覆盖，默认 FOolish）
+export function ensureAdmin() {
+  const nick = process.env.ADMIN_NICKNAME || 'FOolish';
+  const existing = db.prepare('SELECT id FROM users WHERE nickname = ?').get(nick);
+  if (!existing) {
+    const info = db
+      .prepare("INSERT INTO users (nickname, college, avatar, exp, role, created_at) VALUES (?, '', '🎓', 0, 'admin', ?)")
+      .run(nick, nowIso());
+    return Number(info.lastInsertRowid);
+  }
+  db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(existing.id);
+  return existing.id;
+}

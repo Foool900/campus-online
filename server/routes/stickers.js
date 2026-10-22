@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, nowIso } from '../db.js';
+import { requireRole } from '../auth.js';
 
 const router = Router();
 
@@ -21,10 +22,7 @@ const MAX_COUNT = 50; // 每人上限
 
 // GET /api/stickers?userId= —— 我的表情包
 router.get('/stickers', (req, res) => {
-  const userId = Number(req.query.userId);
-  if (!Number.isInteger(userId)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+  const userId = req.user.id;
   const stickers = db
     .prepare('SELECT id, user_id AS userId, url, created_at AS createdAt FROM stickers WHERE user_id = ? ORDER BY id DESC')
     .all(userId);
@@ -32,11 +30,8 @@ router.get('/stickers', (req, res) => {
 });
 
 // POST /api/stickers?userId= —— 上传表情包（raw 图片二进制）
-router.post('/stickers', raw({ type: ALLOWED, limit: '3mb' }), (req, res) => {
-  const userId = Number(req.query.userId);
-  if (!Number.isInteger(userId)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+router.post('/stickers', raw({ type: ALLOWED, limit: '3mb' }), requireRole('student', 'admin'), (req, res) => {
+  const userId = req.user.id;
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
   if (!user) return res.status(404).json({ error: '用户不存在' });
 
@@ -67,12 +62,9 @@ router.post('/stickers', raw({ type: ALLOWED, limit: '3mb' }), (req, res) => {
 });
 
 // DELETE /api/stickers/:id?userId= —— 删除自己的表情包
-router.delete('/stickers/:id', (req, res) => {
+router.delete('/stickers/:id', requireRole('student', 'admin'), (req, res) => {
   const id = Number(req.params.id);
-  const userId = Number(req.query.userId);
-  if (!Number.isInteger(id) || !Number.isInteger(userId)) {
-    return res.status(400).json({ error: '缺少有效的参数' });
-  }
+  const userId = req.user.id;
   const sticker = db.prepare('SELECT id, url FROM stickers WHERE id = ? AND user_id = ?').get(id, userId);
   if (!sticker) return res.status(404).json({ error: '表情包不存在' });
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db, nowIso } from '../db.js';
+import { requireRole } from '../auth.js';
 
 const router = Router();
 
@@ -28,10 +29,7 @@ function mapTodo(row) {
 
 // GET /api/todos?userId=... —— 某用户的待办列表（待办在前，已完成在后）
 router.get('/todos', (req, res) => {
-  const userId = Number(req.query.userId);
-  if (!Number.isInteger(userId)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+  const userId = req.user.id;
 
   const rows = db
     .prepare(`${SELECT_TODO} WHERE t.user_id = ? ORDER BY (t.status = 'completed') ASC, t.id DESC`)
@@ -40,12 +38,9 @@ router.get('/todos', (req, res) => {
 });
 
 // POST /api/todos —— 创建待办
-router.post('/todos', (req, res) => {
-  const { userId, title, description, dueDate, areaId, expReward } = req.body || {};
-  const uid = Number(userId);
-  if (!Number.isInteger(uid)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+router.post('/todos', requireRole('student', 'admin'), (req, res) => {
+  const { title, description, dueDate, areaId, expReward } = req.body || {};
+  const uid = req.user.id;
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(uid);
   if (!user) {
     return res.status(404).json({ error: '用户不存在' });
@@ -89,16 +84,12 @@ router.post('/todos', (req, res) => {
 });
 
 // PATCH /api/todos/:id/complete —— 完成任务（幂等：已完成的不能重复加经验）
-router.patch('/todos/:id/complete', (req, res) => {
+router.patch('/todos/:id/complete', requireRole('student', 'admin'), (req, res) => {
   const todoId = Number(req.params.id);
   if (!Number.isInteger(todoId)) {
     return res.status(400).json({ error: '无效的任务 ID' });
   }
-  const { userId } = req.body || {};
-  const uid = Number(userId);
-  if (!Number.isInteger(uid)) {
-    return res.status(400).json({ error: '缺少有效的 userId' });
-  }
+  const uid = req.user.id;
 
   const completeTx = db.transaction(() => {
     const todo = db.prepare('SELECT * FROM todos WHERE id = ?').get(todoId);

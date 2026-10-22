@@ -1,9 +1,9 @@
-// 统一封装 fetch：自动 JSON 解析、把后端错误信息抛给调用方
+// 统一封装 fetch：自动 JSON 解析、自动带 token、把后端错误信息抛给调用方
 async function request(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(path, { ...options, headers });
   let data = null;
   try {
     data = await res.json();
@@ -20,6 +20,36 @@ async function request(path, options = {}) {
 
 export const api = {
   health: () => request('/api/health'),
+  authRegister: (body) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(body) }),
+  authLogin: (body) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  authSetPassword: (body) => request('/api/auth/set-password', { method: 'POST', body: JSON.stringify(body) }),
+  authLogout: () => request('/api/auth/logout', { method: 'POST' }),
+  authMe: () => request('/api/auth/me'),
+  verificationUpload: async (file) => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
+    const headers = { 'Content-Type': file.type };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch('/api/verification/upload', { method: 'POST', headers, body: file });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      const err = new Error(data?.error || `上传失败（HTTP ${res.status}）`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
+  verificationMe: () => request('/api/verification/me'),
+  submitVerification: (body) => request('/api/verification', { method: 'POST', body: JSON.stringify(body) }),
+  verificationPending: () => request('/api/verification/pending'),
+  approveVerification: (id) => request(`/api/verification/${id}/approve`, { method: 'POST' }),
+  rejectVerification: (id, body) => request(`/api/verification/${id}/reject`, { method: 'POST', body: JSON.stringify(body) }),
+  adminList: () => request('/api/admin'),
+  promoteAdmin: (body) => request('/api/admin', { method: 'POST', body: JSON.stringify(body) }),
   campuses: () => request('/api/campuses'),
   areas: (campusId) =>
     request('/api/areas' + (campusId ? `?campusId=${encodeURIComponent(campusId)}` : '')),

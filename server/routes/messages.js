@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, nowIso } from '../db.js';
 import { isParticipant } from './posts.js';
+import { requireRole } from '../auth.js';
 
 const router = Router();
 
@@ -284,27 +285,29 @@ router.get('/channels/:channelId/messages', (req, res) => {
   res.json(listConversationMessages('chat', channelId));
 });
 
-router.post('/channels/:channelId/messages', (req, res) => {
+router.post('/channels/:channelId/messages', requireRole('student', 'admin'), (req, res) => {
   const channelId = Number(req.params.channelId);
   if (!Number.isInteger(channelId)) return res.status(400).json({ error: '无效的频道 ID' });
-  const result = insertConversationMessage('chat', channelId, req.body?.userId, req.body || {});
+  const result = insertConversationMessage('chat', channelId, req.user.id, req.body || {});
   if (result.error) return res.status(result.status).json({ error: result.error });
   res.status(201).json(result.message);
 });
 
-router.post('/channels/:channelId/messages/:messageId/recall', (req, res) => {
-  const result = recallConversationMessage('chat', Number(req.params.channelId), Number(req.params.messageId), Number(req.body?.userId));
+router.post('/channels/:channelId/messages/:messageId/recall', requireRole('student', 'admin'), (req, res) => {
+  const channelId = Number(req.params.channelId);
+  const result = recallConversationMessage('chat', channelId, Number(req.params.messageId), req.user.id);
   if (result.error) return res.status(result.status).json({ error: result.error });
   const io = req.app.get('io');
-  if (io) io.to(`channel:${Number(req.params.channelId)}`).emit('message:recalled', { conversationType: 'chat', conversationId: Number(req.params.channelId), messageId: result.messageId, recalledBy: Number(req.body?.userId) });
+  if (io) io.to(`channel:${channelId}`).emit('message:recalled', { conversationType: 'chat', conversationId: channelId, messageId: result.messageId, recalledBy: req.user.id });
   res.json(result);
 });
 
-router.post('/channels/:channelId/messages/:messageId/react', (req, res) => {
-  const result = reactConversationMessage('chat', Number(req.params.channelId), Number(req.params.messageId), Number(req.body?.userId), req.body?.emoji);
+router.post('/channels/:channelId/messages/:messageId/react', requireRole('student', 'admin'), (req, res) => {
+  const channelId = Number(req.params.channelId);
+  const result = reactConversationMessage('chat', channelId, Number(req.params.messageId), req.user.id, req.body?.emoji);
   if (result.error) return res.status(result.status).json({ error: result.error });
   const io = req.app.get('io');
-  if (io) io.to(`channel:${Number(req.params.channelId)}`).emit('message:reaction', { conversationType: 'chat', conversationId: Number(req.params.channelId), messageId: result.messageId, reactions: result.reactions });
+  if (io) io.to(`channel:${channelId}`).emit('message:reaction', { conversationType: 'chat', conversationId: channelId, messageId: result.messageId, reactions: result.reactions });
   res.json(result);
 });
 
@@ -314,8 +317,8 @@ router.get('/channels/:channelId/messages/:messageId/reads', (req, res) => {
   res.json(rows);
 });
 
-router.post('/channels/:channelId/read', (req, res) => {
-  const result = readConversation('chat', Number(req.params.channelId), Number(req.body?.userId), Number(req.body?.upToMessageId));
+router.post('/channels/:channelId/read', requireRole('student', 'admin'), (req, res) => {
+  const result = readConversation('chat', Number(req.params.channelId), req.user.id, Number(req.body?.upToMessageId));
   if (result.error) return res.status(result.status).json({ error: result.error });
   res.json(result);
 });
@@ -330,24 +333,24 @@ router.get('/posts/:id/messages', (req, res) => {
   res.json(listConversationMessages('activity', id));
 });
 
-router.post('/posts/:id/messages', (req, res) => {
-  const result = insertConversationMessage('activity', req.params.id, req.body?.userId, req.body || {});
+router.post('/posts/:id/messages', requireRole('student', 'admin'), (req, res) => {
+  const result = insertConversationMessage('activity', req.params.id, req.user.id, req.body || {});
   if (result.error) return res.status(result.status).json({ error: result.error });
   res.status(201).json(result.message);
 });
 
-router.post('/posts/:id/messages/:messageId/recall', (req, res) => {
+router.post('/posts/:id/messages/:messageId/recall', requireRole('student', 'admin'), (req, res) => {
   const id = Number(req.params.id);
-  const result = recallConversationMessage('activity', id, Number(req.params.messageId), Number(req.body?.userId));
+  const result = recallConversationMessage('activity', id, Number(req.params.messageId), req.user.id);
   if (result.error) return res.status(result.status).json({ error: result.error });
   const io = req.app.get('io');
-  if (io) io.to(`post:${id}`).emit('message:recalled', { conversationType: 'activity', conversationId: id, messageId: result.messageId, recalledBy: Number(req.body?.userId) });
+  if (io) io.to(`post:${id}`).emit('message:recalled', { conversationType: 'activity', conversationId: id, messageId: result.messageId, recalledBy: req.user.id });
   res.json(result);
 });
 
-router.post('/posts/:id/messages/:messageId/react', (req, res) => {
+router.post('/posts/:id/messages/:messageId/react', requireRole('student', 'admin'), (req, res) => {
   const id = Number(req.params.id);
-  const result = reactConversationMessage('activity', id, Number(req.params.messageId), Number(req.body?.userId), req.body?.emoji);
+  const result = reactConversationMessage('activity', id, Number(req.params.messageId), req.user.id, req.body?.emoji);
   if (result.error) return res.status(result.status).json({ error: result.error });
   const io = req.app.get('io');
   if (io) io.to(`post:${id}`).emit('message:reaction', { conversationType: 'activity', conversationId: id, messageId: result.messageId, reactions: result.reactions });
@@ -360,8 +363,8 @@ router.get('/posts/:id/messages/:messageId/reads', (req, res) => {
   res.json(rows);
 });
 
-router.post('/posts/:id/read', (req, res) => {
-  const result = readConversation('activity', Number(req.params.id), Number(req.body?.userId), Number(req.body?.upToMessageId));
+router.post('/posts/:id/read', requireRole('student', 'admin'), (req, res) => {
+  const result = readConversation('activity', Number(req.params.id), req.user.id, Number(req.body?.upToMessageId));
   if (result.error) return res.status(result.status).json({ error: result.error });
   res.json(result);
 });

@@ -130,14 +130,21 @@ export default function AreaDialog({ area, onClose }) {
               </div>
             </div>
           ))}
-          <button className="fab" onClick={() => setShowEditor(true)} aria-label="发布活动帖">
-            ＋
-          </button>
+          {user?.role !== 'member' && (
+            <button className="fab" onClick={() => setShowEditor(true)} aria-label="发布活动帖">
+              ＋
+            </button>
+          )}
         </div>
       ) : (
         <div className="zone-body chat-zone">
           {channel ? (
-            <ChatChannel conversationType="chat" conversationId={channel.id} canSpeak={!!user} />
+            <ChatChannel
+              conversationType="chat"
+              conversationId={channel.id}
+              canSpeak={!!user && user.role !== 'member'}
+              lockMessage="提交认证材料后才能发言"
+            />
           ) : (
             <div className="chat-empty">加载中…</div>
           )}

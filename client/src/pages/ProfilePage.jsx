@@ -3,8 +3,10 @@ import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
 import { COLLEGES } from '../colleges.js';
 
+const ROLE_LABELS = { member: '会员（未认证）', student: '学员（已认证）', admin: '管理员' };
+
 export default function ProfilePage() {
-  const { user, setUser } = useUser();
+  const { user, setUser, logout } = useUser();
   const [nickname, setNickname] = useState(user?.nickname || '');
   const [college, setCollege] = useState(user?.college || '');
   const [saving, setSaving] = useState(false);
@@ -62,6 +64,7 @@ export default function ProfilePage() {
         <div>
           <p className="profile-name">{user.nickname}</p>
           <p className="profile-college">{user.college || '未填写学院'}</p>
+          <p className="profile-role">{ROLE_LABELS[user.role] || user.role}</p>
         </div>
         <div className="profile-stats">
           <div className="stat">
@@ -113,6 +116,10 @@ export default function ProfilePage() {
         {message && <div className="form-success">{message}</div>}
         {error && <div className="form-error">{error}</div>}
       </form>
+
+      <div className="card">
+        <button type="button" className="btn ghost" onClick={logout}>🚪 退出登录</button>
+      </div>
     </div>
   );
 }

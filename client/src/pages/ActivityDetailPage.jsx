@@ -144,10 +144,15 @@ export default function ActivityDetailPage() {
     return list;
   }, [post, participants]);
 
+  const isVerified = !!(user && (user.role === 'student' || user.role === 'admin'));
   const isTerminal = post ? post.status === 'ended' || post.status === 'cancelled' : false;
-  const canSpeak = !!(user && (role === 'admin' || role === 'participant') && !isTerminal);
-  const lockMessage = isTerminal ? `活动已${STATUS_LABELS[post.status]}，全员只读` : '加入活动后即可发言';
-  const onJoin = !isTerminal && role === 'guest' && post?.status === 'open' ? join : null;
+  const canSpeak = isVerified && (role === 'admin' || role === 'participant') && !isTerminal;
+  const lockMessage = !isVerified
+    ? '提交认证材料后才能发言'
+    : isTerminal
+      ? `活动已${STATUS_LABELS[post.status]}，全员只读`
+      : '加入活动后即可发言';
+  const onJoin = isVerified && !isTerminal && role === 'guest' && post?.status === 'open' ? join : null;
 
   if (error && !post) {
     return (
@@ -202,6 +207,8 @@ export default function ActivityDetailPage() {
                   <span className="act-info-status">✅ 我是发起人</span>
                 ) : role === 'participant' ? (
                   <span className="act-info-status">✅ 已加入，可参与讨论</span>
+                ) : !isVerified ? (
+                  <span className="act-info-status">🔒 认证学员后才能加入</span>
                 ) : post?.status === 'open' ? (
                   <button className="btn primary" onClick={join} disabled={joinLoading || !user}>{joinLoading ? '加入中…' : '报名 / 加入'}</button>
                 ) : (

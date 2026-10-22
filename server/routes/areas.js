@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../db.js';
+import { requireRole } from '../auth.js';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ router.get('/areas', (req, res) => {
 });
 
 // PATCH /api/areas/:id —— 更新标记坐标（地图编辑模式拖拽定位用）
-router.patch('/areas/:id', (req, res) => {
+router.patch('/areas/:id', requireRole('admin'), (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: '无效的区域 ID' });
