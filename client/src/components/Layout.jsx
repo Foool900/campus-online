@@ -6,6 +6,7 @@ import HeDaMap from './HeDaMap.jsx';
 import AreaDialog from './AreaDialog.jsx';
 import HudOverlay from './HudOverlay.jsx';
 import WorldChat from './WorldChat.jsx';
+import MobileHud from './MobileHud.jsx';
 import {
   TopCenter,
   TopLeft,
@@ -18,10 +19,32 @@ import {
 
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 
+// 判断是否为手机窄屏（横屏手机也归入此断点）
+function useIsMobile(query = '(max-width: 820px)') {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia(query).matches : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = (e) => setMatches(e.matches);
+    mq.addEventListener('change', onChange);
+    setMatches(mq.matches);
+    return () => mq.removeEventListener('change', onChange);
+  }, [query]);
+  return matches;
+}
+
 // 游戏 HUD 外壳：全屏地图常驻，四周悬浮面板，页面以覆盖式玻璃面板承载
 export default function Layout({ children }) {
   const { user } = useUser();
   const navigate = useNavigate();
+
+  // 手机适配：窄屏走 MobileHud，横屏/竖屏由小地图按钮手动切换
+  const isMobile = useIsMobile();
+  const [mode, setMode] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < window.innerHeight ? 'portrait' : 'landscape'
+  );
+  const toggleMode = () => setMode((m) => (m === 'portrait' ? 'landscape' : 'portrait'));
 
   // 地图数据
   const [campuses, setCampuses] = useState([]);
@@ -147,33 +170,53 @@ export default function Layout({ children }) {
       <div className="map-vignette" />
 
       {/* HUD 悬浮面板 */}
-      <TopCenter activeCampus={activeCampus} editing={editing} onToggleEdit={() => setEditing((v) => !v)} />
-      <TopLeft campuses={campuses} campusId={campusId} onSwitchMap={switchMap} onSwitchWorld={switchWorld} />
-      <TopRight
-        user={user}
-        onProfile={() => navigate('/profile')}
-        onAchievements={() => navigate('/achievements')}
-        onLeaderboard={() => navigate('/leaderboard')}
-      />
-      <GuideArrow />
-      <Gacha onGacha={gacha} />
+      {isMobile ? (
+        <MobileHud
+          mode={mode}
+          activeCampus={activeCampus}
+          user={user}
+          editing={editing}
+          zoom={view.zoom}
+          onToggleMode={toggleMode}
+          onSwitchMap={switchMap}
+          onSwitchWorld={switchWorld}
+          onToggleEdit={() => setEditing((v) => !v)}
+          onGacha={gacha}
+          onTasks={() => navigate('/tasks')}
+          onBag={() => say('「背包」还未开发')}
+          onSettings={() => say('「设置」还未开发')}
+          onProfile={() => navigate('/profile')}
+          onLeaderboard={() => navigate('/leaderboard')}
+          onAchievements={() => navigate('/achievements')}
+          onZoom={setZoom}
+        />
+      ) : (
+        <>
+          <TopCenter activeCampus={activeCampus} editing={editing} onToggleEdit={() => setEditing((v) => !v)} />
+          <TopLeft campuses={campuses} campusId={campusId} onSwitchMap={switchMap} onSwitchWorld={switchWorld} />
+          <TopRight
+            user={user}
+            onProfile={() => navigate('/profile')}
+            onAchievements={() => navigate('/achievements')}
+            onLeaderboard={() => navigate('/leaderboard')}
+          />
+          <GuideArrow />
+          <Gacha onGacha={gacha} />
+          <QuickBar
+            zoom={view.zoom}
+            activeCampus={activeCampus}
+            onTasks={() => navigate('/tasks')}
+            onBag={() => say('「背包」还未开发')}
+            onSettings={() => say('「设置」还未开发')}
+          />
+          <ZoomControl zoom={view.zoom} onZoom={setZoom} />
+        </>
+      )}
 
-      {/* 底部中央：世界频道 */}
-      <div
-        className="absolute"
-        style={{ bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 20, width: 420, maxWidth: '92vw' }}
-      >
+      {/* 世界频道：桌面/横屏居中，竖屏贴左下角 */}
+      <div className={'world-chat-wrap' + (isMobile && mode === 'portrait' ? ' portrait' : '')}>
         <WorldChat />
       </div>
-
-      <QuickBar
-        zoom={view.zoom}
-        activeCampus={activeCampus}
-        onTasks={() => navigate('/tasks')}
-        onBag={() => say('「背包」还未开发')}
-        onSettings={() => say('「设置」还未开发')}
-      />
-      <ZoomControl zoom={view.zoom} onZoom={setZoom} />
 
       {/* 覆盖式页面（任务/排行榜/成就/我的） */}
       <HudOverlay>{children}</HudOverlay>
