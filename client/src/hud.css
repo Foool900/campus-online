@@ -1262,7 +1262,9 @@ input, select, textarea { color: var(--text); }
 .verify-app-time { font-size: 12px; color: var(--muted); }
 .verify-app-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .admin-list { display: flex; flex-wrap: wrap; gap: 8px; }
-.admin-item { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 13px; color: rgba(255, 255, 255, 0.85); }
+.admin-item { display: inline-flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 13px; color: rgba(255, 255, 255, 0.85); }
+.admin-remove { border: none; background: none; color: #fca5a5; font-size: 15px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.admin-remove:hover { color: #f87171; }
 .admin-add { display: flex; gap: 8px; margin-top: 10px; }
 .admin-add input { flex: 1; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; color: #fff; }
 .admin-add input:focus { border-color: rgba(56, 189, 248, 0.6); }

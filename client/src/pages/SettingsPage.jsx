@@ -122,6 +122,16 @@ export default function SettingsPage() {
     }
   };
 
+  const removeAdmin = async (id) => {
+    try {
+      await api.removeAdmin(id);
+      setMsg('已移除管理员');
+      api.adminList().then(setAdmins).catch(() => {});
+    } catch (e) {
+      setError(e.message || '操作失败');
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -196,7 +206,12 @@ export default function SettingsPage() {
           <h3 style={{ marginTop: 0 }}>管理员管理</h3>
           <div className="admin-list">
             {admins.map((a) => (
-              <span key={a.id} className="admin-item">{a.avatar} {a.nickname}</span>
+              <span key={a.id} className="admin-item">
+                {a.avatar} {a.nickname}
+                {a.id !== user.id && (
+                  <button className="admin-remove" onClick={() => removeAdmin(a.id)} title="移除管理员" aria-label="移除管理员">×</button>
+                )}
+              </span>
             ))}
           </div>
           <div className="admin-add">

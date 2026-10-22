@@ -50,6 +50,7 @@ export const api = {
   rejectVerification: (id, body) => request(`/api/verification/${id}/reject`, { method: 'POST', body: JSON.stringify(body) }),
   adminList: () => request('/api/admin'),
   promoteAdmin: (body) => request('/api/admin', { method: 'POST', body: JSON.stringify(body) }),
+  removeAdmin: (id) => request(`/api/admin/${id}`, { method: 'DELETE' }),
   campuses: () => request('/api/campuses'),
   areas: (campusId) =>
     request('/api/areas' + (campusId ? `?campusId=${encodeURIComponent(campusId)}` : '')),

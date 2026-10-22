@@ -148,4 +148,21 @@ router.post('/admin', requireRole('admin'), (req, res) => {
   res.json({ ok: true });
 });
 
+// DELETE /api/admin/:id —— 移除管理员（管理员；不能移除自己）
+router.delete('/admin/:id', requireRole('admin'), (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: '无效的用户 ID' });
+  if (id === req.user.id) return res.status(403).json({ error: '不能移除自己' });
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  if (!user) return res.status(404).json({ error: '用户不存在' });
+  if (user.role !== 'admin') return res.status(409).json({ error: '该用户不是管理员' });
+
+  // 移除管理员：若曾是认证学员则降回学员，否则降回会员
+  const wasStudent = db
+    .prepare("SELECT 1 FROM verifications WHERE user_id = ? AND status = 'approved'")
+    .get(id);
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(wasStudent ? 'student' : 'member', id);
+  res.json({ ok: true });
+});
+
 export default router;
