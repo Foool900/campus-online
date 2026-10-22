@@ -97,7 +97,7 @@ export function GuideArrow() {
 
 export function QuickBar({ zoom, activeCampus, onTasks, onBag, onSettings }) {
   return (
-    <div className="absolute" style={{ bottom: 16, left: 16, zIndex: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div className="absolute" style={{ top: 16, left: 180, zIndex: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div className="hud-panel-soft" style={{ padding: '6px 10px', fontSize: 12, color: 'rgba(255,255,255,.6)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span>📍 {activeCampus?.name || ''}</span>
         <span style={{ color: 'rgba(255,255,255,.35)' }}>缩放 {Math.round(zoom * 100)}%</span>
