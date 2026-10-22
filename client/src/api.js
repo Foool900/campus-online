@@ -122,9 +122,12 @@ export const api = {
     request(`/api/stickers/${id}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' }),
   // 上传表情包用原始二进制（非 JSON），单独封装
   uploadSticker: async (userId, file) => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
+    const headers = { 'Content-Type': file.type };
+    if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(`/api/stickers?userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
-      headers: { 'Content-Type': file.type },
+      headers,
       body: file,
     });
     let data = null;
