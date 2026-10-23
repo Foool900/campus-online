@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
-import HeDaMap from './HeDaMap.jsx';
+import MapEngine from './MapEngine.jsx';
 import AreaDialog from './AreaDialog.jsx';
 import HudOverlay from './HudOverlay.jsx';
 import WorldChat from './WorldChat.jsx';
@@ -14,10 +14,7 @@ import {
   Gacha,
   GuideArrow,
   QuickBar,
-  ZoomControl,
 } from './HudPanels.jsx';
-
-const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 
 // 判断是否为手机窄屏（覆盖横屏手机：主流手机横屏宽度 ≤ 932px）
 function useIsMobile(query = '(max-width: 932px)') {
@@ -64,7 +61,7 @@ function tryLockLandscape() {
   }
 }
 
-// 游戏 HUD 外壳：全屏地图常驻，四周悬浮面板，页面以覆盖式玻璃面板承载
+// 游戏 HUD 外壳：全屏地图引擎常驻，四周悬浮面板，页面以覆盖式玻璃面板承载
 export default function Layout({ children }) {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -94,13 +91,8 @@ export default function Layout({ children }) {
   const [campusId, setCampusId] = useState(null);
   const [areas, setAreas] = useState([]);
   const [selectedArea, setSelectedArea] = useState(null);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(false); // 编辑标记（拖拽节点在后续阶段接入）
   const [error, setError] = useState('');
-
-  // 地图视图（缩放 + 平移）
-  const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
-  const [panning, setPanning] = useState(false);
-  const panRef = useRef(null);
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -125,7 +117,6 @@ export default function Layout({ children }) {
     if (!campusId) return;
     setAreas([]);
     setSelectedArea(null);
-    setView({ zoom: 1, x: 0, y: 0 });
     api
       .areas(campusId)
       .then(setAreas)
@@ -133,87 +124,6 @@ export default function Layout({ children }) {
   }, [campusId]);
 
   const activeCampus = campuses.find((c) => c.id === campusId);
-
-  const moveArea = async (areaId, x, y) => {
-    setAreas((prev) => prev.map((a) => (a.id === areaId ? { ...a, x, y } : a)));
-    try {
-      await api.moveArea(areaId, { x, y });
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  // 平移（鼠标拖拽）：仅在空白处拖动（避开地点标记）；触摸交给下方 touch 手势处理
-  const onPointerDown = (e) => {
-    if (e.pointerType === 'touch') return;
-    if (editing) return;
-    if (e.target.closest && e.target.closest('.area-marker')) return;
-    panRef.current = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y, moved: false };
-    setPanning(true);
-  };
-  const onPointerMove = (e) => {
-    if (e.pointerType === 'touch') return;
-    const p = panRef.current;
-    if (!p) return;
-    const dx = e.clientX - p.sx;
-    const dy = e.clientY - p.sy;
-    if (!p.moved && Math.abs(dx) + Math.abs(dy) > 3) p.moved = true;
-    if (p.moved) setView((v) => ({ ...v, x: p.ox + dx, y: p.oy + dy }));
-  };
-  const onPointerUp = (e) => {
-    if (e.pointerType === 'touch') return;
-    panRef.current = null;
-    setPanning(false);
-  };
-  const onWheel = (e) => {
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    setView((v) => ({ ...v, zoom: clamp(v.zoom * factor, 0.5, 4) }));
-  };
-
-  // 触摸手势：单指平移、双指捏合缩放（替代移动端缩放按钮）
-  const touchRef = useRef(null);
-  const onTouchStart = (e) => {
-    if (editing) return;
-    if (e.target.closest && e.target.closest('.area-marker')) return;
-    const t = e.touches;
-    if (t.length === 1) {
-      touchRef.current = { mode: 'pan', sx: t[0].clientX, sy: t[0].clientY, ox: view.x, oy: view.y, moved: false };
-      setPanning(true);
-    } else if (t.length === 2) {
-      const dx = t[0].clientX - t[1].clientX;
-      const dy = t[0].clientY - t[1].clientY;
-      touchRef.current = { mode: 'pinch', dist: Math.hypot(dx, dy), zoom: view.zoom };
-      setPanning(false);
-    }
-  };
-  const onTouchMove = (e) => {
-    const s = touchRef.current;
-    if (!s) return;
-    const t = e.touches;
-    if (s.mode === 'pan' && t.length === 1) {
-      const dx = t[0].clientX - s.sx;
-      const dy = t[0].clientY - s.sy;
-      if (!s.moved && Math.abs(dx) + Math.abs(dy) > 3) s.moved = true;
-      if (s.moved) setView((v) => ({ ...v, x: s.ox + dx, y: s.oy + dy }));
-    } else if (s.mode === 'pinch' && t.length === 2) {
-      const dx = t[0].clientX - t[1].clientX;
-      const dy = t[0].clientY - t[1].clientY;
-      const dist = Math.hypot(dx, dy);
-      if (s.dist > 0) setView((v) => ({ ...v, zoom: clamp(s.zoom * (dist / s.dist), 0.5, 4) }));
-    }
-  };
-  const onTouchEnd = (e) => {
-    const s = touchRef.current;
-    const t = e.touches;
-    if (t.length === 0) {
-      touchRef.current = null;
-      setPanning(false);
-    } else if (s && s.mode === 'pinch' && t.length === 1) {
-      // 捏合抬起到单指，接着平移
-      touchRef.current = { mode: 'pan', sx: t[0].clientX, sy: t[0].clientY, ox: view.x, oy: view.y, moved: false };
-      setPanning(true);
-    }
-  };
 
   // HUD 动作
   const switchMap = () => {
@@ -231,37 +141,16 @@ export default function Layout({ children }) {
     const prizes = ['SSR 星辉剑姬', 'SR 霜语者', 'SSR 龙裔·烬', 'R 见习法师', 'SR 观星术士'];
     say(`✨ ${prizes[Math.floor(Math.random() * prizes.length)]} 加入队伍！（卡池功能未开发）`);
   };
-  const setZoom = (z) => setView((v) => ({ ...v, zoom: clamp(z, 0.5, 4) }));
 
   return (
     <div className="hud-root">
-      {/* 全屏大地图（可平移缩放） */}
-      <div
-        className={'map-viewport' + (panning ? ' panning' : '')}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onWheel={onWheel}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onTouchCancel={onTouchEnd}
-      >
-        <div
-          className="map-transform"
-          style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}
-        >
-          <HeDaMap
-            campus={activeCampus}
-            areas={areas}
-            onSelectArea={setSelectedArea}
-            selectedAreaId={selectedArea?.id}
-            editable={editing}
-            onMove={moveArea}
-          />
-        </div>
-      </div>
+      {/* 全屏地图引擎：三层视差 + 惯性缩放平移 + 以鼠标为锚点 */}
+      <MapEngine
+        key={campusId}
+        areas={areas}
+        selectedAreaId={selectedArea?.id}
+        onSelectArea={setSelectedArea}
+      />
       <div className="map-vignette" />
 
       {/* HUD 悬浮面板 */}
@@ -297,13 +186,11 @@ export default function Layout({ children }) {
           <GuideArrow />
           <Gacha onGacha={gacha} />
           <QuickBar
-            zoom={view.zoom}
             activeCampus={activeCampus}
             onTasks={() => navigate('/tasks')}
             onBag={() => say('「背包」还未开发')}
             onSettings={() => navigate('/settings')}
           />
-          <ZoomControl zoom={view.zoom} onZoom={setZoom} />
         </>
       )}
 

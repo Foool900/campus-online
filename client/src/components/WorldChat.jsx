@@ -3,7 +3,16 @@ import { api } from '../api.js';
 import { socket } from '../socket.js';
 import { useUser } from '../UserContext.jsx';
 
-// 底部中央的「世界频道」：全局聊天，所有同学可见（Socket.IO 实时）
+// 时间戳：ISO -> [HH:MM]
+function fmtTime(iso) {
+  if (!iso) return '--:--';
+  const d = new Date(iso);
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+// 左下角「世界频道」：战术通讯终端（Socket.IO 实时）
 export default function WorldChat({ collapsible = false, collapsed = false, onToggleCollapse }) {
   const { user } = useUser();
   const [channel, setChannel] = useState(null);
@@ -11,6 +20,7 @@ export default function WorldChat({ collapsible = false, collapsed = false, onTo
   const [loading, setLoading] = useState(true);
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
+  const [focused, setFocused] = useState(false);
 
   const channelRef = useRef(null);
   const listRef = useRef(null);
@@ -94,7 +104,14 @@ export default function WorldChat({ collapsible = false, collapsed = false, onTo
   const isCollapsed = collapsible && collapsed;
 
   return (
-    <div className={'hud-panel world-chat' + (isCollapsed ? ' collapsed' : '')}>
+    <div
+      className={'world-chat' + (focused ? ' expanded' : '') + (isCollapsed ? ' collapsed' : '')}
+    >
+      <i className="wc-corner tl" />
+      <i className="wc-corner tr" />
+      <i className="wc-corner bl" />
+      <i className="wc-corner br" />
+
       <div
         className="wc-head"
         role={collapsible ? 'button' : undefined}
@@ -103,20 +120,22 @@ export default function WorldChat({ collapsible = false, collapsed = false, onTo
         onClick={collapsible ? onToggleCollapse : undefined}
         onKeyDown={collapsible ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleCollapse(); } } : undefined}
       >
-        <span style={{ fontSize: 13, fontWeight: 600 }}>🌐 世界频道</span>
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>· 全校在线</span>
-        {error && <span style={{ fontSize: 11, color: '#fca5a5', marginLeft: 'auto' }}>{error}</span>}
-        {collapsible && <span className="wc-chevron" style={{ marginLeft: 'auto' }}>{collapsed ? '▲' : '▼'}</span>}
+        <span className="wc-title">[ WORLD_COMMS // ONLINE ]</span>
+        {error && <span className="wc-error">{error}</span>}
+        {collapsible && <span className="wc-chevron">{collapsed ? '▲' : '▼'}</span>}
       </div>
 
       <div className="wc-messages" ref={listRef}>
-        {loading && <div className="wc-line" style={{ color: 'var(--muted)' }}>加载中…</div>}
+        {loading && <div className="wc-line wc-muted">SYNC…</div>}
         {!loading && messages.length === 0 && (
-          <div className="wc-line" style={{ color: 'var(--muted)' }}>世界频道还很安静，来打个招呼吧～</div>
+          <div className="wc-line wc-muted">NO SIGNAL</div>
         )}
         {messages.map((m) => (
           <div key={m.id} className="wc-line">
-            <span className="who">{m.nickname}</span>：{m.content}
+            <span className="wc-time">[{fmtTime(m.createdAt)}]</span>{' '}
+            <span className="wc-who">{m.nickname}</span>
+            <span className="wc-sep"> › </span>
+            {m.content}
           </div>
         ))}
       </div>
@@ -131,10 +150,16 @@ export default function WorldChat({ collapsible = false, collapsed = false, onTo
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="和全校同学说点什么…"
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            if (!input.trim()) setFocused(false);
+          }}
+          placeholder=">_ 输入消息…"
           maxLength={500}
         />
-        <button type="submit" className="hud-btn" disabled={!input.trim()}>发送</button>
+        <button type="submit" className="wc-send" disabled={!input.trim()} aria-label="发送">
+          &gt;_
+        </button>
       </form>
     </div>
   );

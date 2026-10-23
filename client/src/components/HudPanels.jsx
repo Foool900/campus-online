@@ -23,12 +23,10 @@ export function TopCenter({ activeCampus, editing, onToggleEdit }) {
 
 export function TopLeft({ campuses, campusId, onSwitchMap, onSwitchWorld }) {
   const active = campuses.find((c) => c.id === campusId);
-  const slug = active?.slug || 'minglun';
   return (
     <div className="absolute" style={{ top: 16, left: 16, zIndex: 20, width: 150 }}>
       <div className="hud-panel" style={{ padding: 8 }}>
         <div className="minimap">
-          <img src={`/maps/${slug}.jpg`} alt="小地图" />
           <div className="mm-ring" />
           <div className="mm-view" />
           <div className="mm-dot" />
@@ -114,42 +112,23 @@ export function Gacha({ onGacha }) {
 export function GuideArrow() {
   return (
     <svg className="guide-arrow" viewBox="0 0 1600 900" preserveAspectRatio="none" fill="none">
-      <path d="M 1520 110 C 1620 200, 1650 300, 1560 430" stroke="rgba(245,199,106,.2)" strokeWidth="8" />
-      <path className="dash" d="M 1520 110 C 1620 200, 1650 300, 1560 430" stroke="rgba(245,199,106,.7)" strokeWidth="2.5" strokeDasharray="7 7" />
-      <text x="1630" y="250" fill="rgba(245,199,106,.85)" fontSize="14" textAnchor="end" style={{ fontFamily: 'system-ui' }}>新卡池开启 →</text>
+      <path d="M 1520 110 C 1620 200, 1650 300, 1560 430" stroke="rgba(139,157,245,.18)" strokeWidth="8" />
+      <path className="dash" d="M 1520 110 C 1620 200, 1650 300, 1560 430" stroke="rgba(139,157,245,.6)" strokeWidth="2.5" strokeDasharray="7 7" />
+      <text x="1630" y="250" fill="rgba(139,157,245,.85)" fontSize="14" textAnchor="end" style={{ fontFamily: 'system-ui' }}>新卡池开启 →</text>
     </svg>
   );
 }
 
-export function QuickBar({ zoom, activeCampus, onTasks, onBag, onSettings }) {
+export function QuickBar({ activeCampus, onTasks, onBag, onSettings }) {
   return (
     <div className="absolute" style={{ top: 16, left: 180, zIndex: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div className="hud-panel-soft" style={{ padding: '6px 10px', fontSize: 12, color: 'rgba(255,255,255,.6)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span>📍 {activeCampus?.name || ''}</span>
-        <span style={{ color: 'rgba(255,255,255,.35)' }}>缩放 {Math.round(zoom * 100)}%</span>
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="hud-btn" onClick={onTasks}>✅ 任务</button>
         <button className="hud-btn warn" onClick={onBag}>🎒 背包</button>
         <button className="hud-btn warn" onClick={onSettings}>⚙️ 设置</button>
-      </div>
-    </div>
-  );
-}
-
-export function ZoomControl({ zoom, onZoom }) {
-  const step = (d) => onZoom(Math.min(4, Math.max(0.5, Math.round((zoom + d) * 10) / 10)));
-  return (
-    <div className="absolute" style={{ bottom: 16, right: 16, zIndex: 20 }}>
-      <div className="hud-panel" style={{ padding: '10px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <button className="hud-btn" style={{ padding: '6px 8px' }} onClick={() => step(0.2)}>＋</button>
-        <input
-          type="range" min="0.5" max="4" step="0.1" value={zoom}
-          onChange={(e) => onZoom(parseFloat(e.target.value))}
-          className="zoom-slider" style={{ margin: '4px 0' }}
-        />
-        <button className="hud-btn" style={{ padding: '6px 8px' }} onClick={() => step(-0.2)}>－</button>
-        <span style={{ fontSize: 11, color: '#7dd3fc', fontFamily: 'monospace' }}>{Math.round(zoom * 100)}%</span>
       </div>
     </div>
   );

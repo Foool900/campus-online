@@ -9,7 +9,6 @@ function Minimap({ slug, mode, onToggleMode }) {
   return (
     <div className="m-minimap">
       <div className="minimap">
-        <img src={`/maps/${slug}.jpg`} alt="小地图" />
         <div className="mm-ring" />
         <div className="mm-view" />
         <div className="mm-dot" />
