@@ -18,8 +18,12 @@ export default function HudOverlay({ children }) {
     <div className="hud-overlay">
       <div className="hud-overlay-backdrop" onClick={() => navigate('/')} />
       <div className="hud-overlay-panel">
+        <i className="ov-corner tl" />
+        <i className="ov-corner tr" />
+        <i className="ov-corner bl" />
+        <i className="ov-corner br" />
         <button className="hud-overlay-close" onClick={() => navigate('/')} aria-label="关闭">
-          ×
+          [ ESC ]
         </button>
         {children}
       </div>

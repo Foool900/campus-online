@@ -12,7 +12,7 @@ const MARGIN = 100;
 const NEIGHBOR_COUNT = 3;
 
 const CLUSTER_THRESHOLD = 40;   // 屏幕距离（px）< 此值则聚合
-const CLUSTER_MAX_ZOOM = 1.5;   // 超过此缩放不再聚合
+const CLUSTER_MAX_ZOOM = 0.75;  // 超过此缩放不再聚合（默认 zoom=1 时不聚合，保留几何形状）
 const CLUSTER_POOL = 40;        // 聚合标记池大小
 
 const X0 = -W;
@@ -246,7 +246,7 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
         id: area.id,
         sx,
         sy,
-        hw: area.name.length * fs * 0.5,
+        hw: (area.name.length + 4) * fs * 0.5,
         hh: fs * 0.6,
         priority: priorityOf(area),
       };
@@ -655,7 +655,7 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
                 textAnchor="middle"
                 fontSize={15}
               >
-                {area.name}
+                {'[ ' + area.name + ' ]'}
               </text>
             );
           })}

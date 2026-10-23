@@ -33,6 +33,8 @@ function formatTime(iso) {
   return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
 }
 
+const pad2 = (n) => String(n).padStart(2, '0');
+
 export default function TasksPage() {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -46,7 +48,6 @@ export default function TasksPage() {
   const [expConfig, setExpConfig] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
-  // 发布表单
   const [pubOpen, setPubOpen] = useState(false);
   const [type, setType] = useState('public');
   const [title, setTitle] = useState('');
@@ -120,20 +121,30 @@ export default function TasksPage() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          📋 任务中心
-          <button className="task-help-btn" onClick={() => setHelpOpen(true)} title="帮助" aria-label="帮助">❔</button>
+        <h1 className="page-title">
+          [ MISSION_CENTER ]
+          <button className="task-help-btn" onClick={() => setHelpOpen(true)} title="帮助" aria-label="帮助">
+            [ ? ]
+          </button>
         </h1>
-        <p>发布公开任务悬赏经验，或记录你的私密备忘</p>
+        <p className="page-sub">// 发布悬赏任务，或记录私密备忘</p>
       </div>
 
       {wallet && (
-        <div className="task-wallet">
-          <div className="task-wallet-item"><b>Lv.{wallet.level}</b><span>等级</span></div>
-          <div className="task-wallet-item"><b>{wallet.totalExp}</b><span>累计经验</span></div>
-          <div className="task-wallet-item"><b>{wallet.availableExp}</b><span>可用经验</span></div>
-          <div className="task-wallet-item"><b>{wallet.frozenExp}</b><span>冻结经验</span></div>
-        </div>
+        <>
+          <div className="task-wallet">
+            <span>[ PILOT_LV: <span className="tw-val">{pad2(wallet.level)}</span> ]</span>
+            <span className="tw-sep">|</span>
+            <span>[ EXP_TOTAL: <span className="tw-val">{wallet.totalExp}</span> ]</span>
+            <span className="tw-sep">|</span>
+            <span>[ EXP_FREE: <span className="tw-val">{wallet.availableExp}</span> ]</span>
+            <span className="tw-sep">|</span>
+            <span>[ EXP_FROZEN: <span className="tw-val">{wallet.frozenExp}</span> ]</span>
+          </div>
+          <div className="task-exp-bar">
+            <i style={{ width: `${wallet.totalExp % 100}%` }} />
+          </div>
+        </>
       )}
 
       <div className="tabs" style={{ flexWrap: 'wrap', gap: 8 }}>
@@ -142,8 +153,8 @@ export default function TasksPage() {
             {label}
           </button>
         ))}
-        <button className="btn primary" style={{ marginLeft: 'auto' }} onClick={() => setPubOpen((v) => !v)}>
-          ＋ 发布任务
+        <button className="btn primary mission-create" style={{ marginLeft: 'auto' }} onClick={() => setPubOpen((v) => !v)}>
+          + NEW MISSION
         </button>
       </div>
 
@@ -203,9 +214,11 @@ export default function TasksPage() {
       )}
 
       {error && <div className="error-banner">{error}</div>}
-      {loading && <div className="empty-state">加载中…</div>}
+      {loading && <div className="empty-state">SYNC…</div>}
       {!loading && !error && tasks.length === 0 && (
-        <div className="empty-state">{filter === 'public' ? '暂无公开任务，来发布第一个吧～' : '暂无任务'}</div>
+        <div className="empty-state">
+          {filter === 'public' ? '> NO ACTIVE MISSIONS DETECTED...' : '> NO DATA'}
+        </div>
       )}
 
       <div className="todo-list">
@@ -213,7 +226,7 @@ export default function TasksPage() {
           <div key={t.id} className="card todo-card task-card" onClick={() => navigate(`/task/${t.id}`)}>
             <div className="todo-main">
               <div className="todo-title" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {t.title}
+                <span className="task-title-text">{t.title}</span>
                 <span className="post-category">{TYPE_LABELS[t.type]}</span>
                 <span className={'status-badge status-' + t.status}>{STATUS_LABELS[t.status]}</span>
               </div>
@@ -227,13 +240,13 @@ export default function TasksPage() {
               )}
               <div className="todo-meta" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span className="reward-chip">+{t.rewardExp} XP</span>
-                <span>👤 {t.publisherName}</span>
-                {t.assigneeId && <span>🤝 {t.assigneeName}</span>}
-                {t.deadlineAt && <span>📅 {formatTime(t.deadlineAt)}</span>}
+                <span className="meta-item">PUB {t.publisherName}</span>
+                {t.assigneeId && <span className="meta-item">ASG {t.assigneeName}</span>}
+                {t.deadlineAt && <span className="meta-item">DL {formatTime(t.deadlineAt)}</span>}
               </div>
             </div>
             <div className="todo-actions">
-              <span style={{ color: 'var(--muted)', fontSize: 12 }}>查看 ›</span>
+              <span className="view-link">VIEW ›</span>
             </div>
           </div>
         ))}
