@@ -25,6 +25,16 @@ function blindboxAmounts(priceNum, cfg) {
   return { deposit, minValue };
 }
 
+// 盲盒开盒结果文案：优先 .text，surprise:true → 惊喜盲盒，其余对象 → 原始 JSON
+function boxResultText(result) {
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    if (result.text) return String(result.text);
+    if (result.surprise === true) return '惊喜盲盒 🎁';
+    return JSON.stringify(result);
+  }
+  return result ? String(result) : '惊喜盲盒 🎁';
+}
+
 export default function MarketPage() {
   const { user } = useUser();
   const [session, setSession] = useState(null);
@@ -45,6 +55,8 @@ export default function MarketPage() {
   const [description, setDescription] = useState('');
   const [boxContent, setBoxContent] = useState('');
   const [mktConfig, setMktConfig] = useState(null);
+  const [boxResult, setBoxResult] = useState(null);
+  const [busyBoxId, setBusyBoxId] = useState(null); // 开盒进行中的订单 id，防双击
 
   const isStudent = user && (user.role === 'student' || user.role === 'admin');
 
@@ -130,7 +142,7 @@ export default function MarketPage() {
   };
   const pay = async (o) => { setErr(''); setMsg(''); try { await api.marketPayOrder(o.id); reload(); setMsg('已支付'); } catch (e) { setErr(e.message); } };
   const confirmOrder = async (o) => { setErr(''); setMsg(''); try { await api.marketConfirmOrder(o.id); reload(); setMsg('已确认收货'); } catch (e) { setErr(e.message); } };
-  const openBox = async (o) => { setErr(''); setMsg(''); try { await api.marketOpenBlindbox(o.id); reload(); setMsg('已开盒 🎁'); } catch (e) { setErr(e.message); } };
+  const openBox = async (o) => { setErr(''); setMsg(''); setBusyBoxId(o.id); try { const r = await api.marketOpenBlindbox(o.id); reload(); setBoxResult(r?.result ?? null); } catch (e) { setErr(e.message); } finally { setBusyBoxId(null); } };
   const deliver = async (o) => { setErr(''); setMsg(''); try { await api.marketDeliverOrder(o.id); reload(); setMsg('已交付'); } catch (e) { setErr(e.message); } };
 
   return (
@@ -264,7 +276,7 @@ export default function MarketPage() {
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             {o.status === 'pending_payment' && <button className="btn primary" onClick={() => pay(o)}>支付</button>}
-            {o.status === 'paid_escrow' && o.item_type === 'blindbox' && <button className="btn primary" onClick={() => openBox(o)}>开盒</button>}
+            {o.status === 'paid_escrow' && o.item_type === 'blindbox' && <button className="btn primary" disabled={busyBoxId === o.id} onClick={() => openBox(o)}>{busyBoxId === o.id ? '开盒中…' : '开盒'}</button>}
             {['paid_escrow', 'delivered'].includes(o.status) && o.item_type !== 'blindbox' && <button className="btn primary" onClick={() => confirmOrder(o)}>确认收货</button>}
           </div>
         </div>
@@ -291,6 +303,19 @@ export default function MarketPage() {
 
       {msg && <div className="form-success">{msg}</div>}
       {err && <div className="form-error">{err}</div>}
+
+      {/* 开盒结果弹窗（单层遮罩，点遮罩或「收下」关闭） */}
+      {boxResult !== null && (
+        <div className="modal-overlay" onClick={() => setBoxResult(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3>🎁 开盒</h3>
+            <p className="modal-sub">{boxResultText(boxResult)}</p>
+            <div className="form-actions">
+              <button className="btn primary" onClick={() => setBoxResult(null)}>收下</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
