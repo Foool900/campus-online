@@ -17,7 +17,7 @@ import achievementsRouter from './routes/achievements.js';
 import worldRouter from './routes/world.js';
 import coinRouter from './routes/coin.js';
 import signinRouter from './routes/signin.js';
-import marketRouter, { ensureMarketShops, drawStalls, settleSession } from './routes/market.js';
+import marketRouter, { ensureMarketShops, drawStalls, settleSession, expireStalls, expireBargainPayments, releaseBlindboxHolds, settleDueShopTerms } from './routes/market.js';
 import lotteryRouter from './routes/lottery.js';
 import tasksRouter, { expireOverdueTasks } from './routes/tasks.js';
 import stickersRouter from './routes/stickers.js';
@@ -310,6 +310,11 @@ function tickMarket() {
       db.prepare("UPDATE market_sessions SET status='closed' WHERE id=?").run(s.id);
       settleSession(s.id);
     }
+    // 定时任务：地摊到期 / 砍价支付超时 / 盲盒保证金释放 / 店铺竞拍结算
+    expireStalls(now);
+    expireBargainPayments(now);
+    releaseBlindboxHolds(now);
+    settleDueShopTerms(now);
   } catch (e) {
     console.error('[market] tick 失败:', e);
   }

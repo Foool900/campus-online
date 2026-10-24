@@ -645,8 +645,8 @@ export function bidShop(userId, shopId, termWeek, amountCoin) {
     if (existing) {
       db.prepare('UPDATE market_shop_bids SET amount_coin=?, frozen_total_coin=?, frozen_key=? WHERE id=?').run(amount, existing.frozen_total_coin + delta, `${key}:${amount}`, existing.id);
     } else {
-      db.prepare("INSERT INTO market_shop_bids (shop_id, term_week, user_id, amount_coin, frozen_total_coin, frozen_key, idempotency_key, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)")
-        .run(shopId, termWeek, userId, amount, delta, `${key}:${amount}`, key, nowIso());
+      db.prepare("INSERT INTO market_shop_bids (shop_id, term_week, user_id, amount_coin, frozen_total_coin, frozen_key, idempotency_key, deadline_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)")
+        .run(shopId, termWeek, userId, amount, delta, `${key}:${amount}`, key, termWeekStartIso(termWeek), nowIso());
     }
     writeLedger({ sessionId: null, bizType: 'shop_bid', bizId: shopId, op: 'freeze', userId, amount: delta, coinTxId: coin.txId, idempotencyKey: `${key}:${amount}:ledger` });
     return { ok: true };
@@ -809,6 +809,100 @@ export function settleSession(sessionId) {
   });
   if (r.error) return r;
   return { ok: true, settled: r.value.settled };
+}
+
+// ============================================================
+// 定时任务（幂等，崩溃重入不重复退款/释放）
+// ============================================================
+
+// ISO 周字符串 'YYYY-Www' → 该周周一 00:00（UTC）ISO 时间
+function termWeekStartIso(termWeek) {
+  const m = String(termWeek).match(/^(\d{4})-W(\d{2})$/);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const week = Number(m[2]);
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7; // Mon=1..Sun=7
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - (jan4Day - 1) + (week - 1) * 7);
+  return monday.toISOString();
+}
+
+// 1) 流动地摊 30min 到期释放：未售商品 expired + 押金 refund
+export function expireStalls(now) {
+  const stalls = db.prepare("SELECT * FROM market_stalls WHERE status='occupied' AND expires_at IS NOT NULL AND expires_at < ?").all(now);
+  let released = 0;
+  for (const s of stalls) {
+    const r = runTx(() => {
+      const up = db.prepare("UPDATE market_stalls SET status='released', expires_at=NULL WHERE id=? AND status='occupied' AND expires_at < ?").run(s.id, now);
+      if (up.changes === 0) return false;
+      db.prepare("UPDATE market_items SET status='expired' WHERE stall_id=? AND status IN ('active','reserved')").run(s.id);
+      if (s.owner_id && s.deposit_coin > 0) {
+        const rk = `stall_deposit_refund:${s.id}`;
+        const coin = applyCoinRaw({ fromUserId: s.owner_id, amount: s.deposit_coin, type: 'refund', relatedType: 'market_stall_deposit', relatedId: s.id, idempotencyKey: rk });
+        if (!coin.error) writeLedger({ sessionId: s.session_id, bizType: 'stall_refund', bizId: s.id, op: 'refund', userId: s.owner_id, amount: s.deposit_coin, coinTxId: coin.txId, idempotencyKey: `${rk}:ledger` });
+      }
+      return true;
+    });
+    if (r.value) released++;
+  }
+  return { released };
+}
+
+// 2) 砍价 24h 支付超时：订单 cancelled + 冻结退款 + 商品回 active/expired
+export function expireBargainPayments(now) {
+  const orders = db.prepare("SELECT * FROM market_orders WHERE status='pending_payment' AND pay_deadline_at IS NOT NULL AND pay_deadline_at < ?").all(now);
+  let cancelled = 0;
+  for (const o of orders) {
+    const r = runTx(() => {
+      const up = db.prepare("UPDATE market_orders SET status='cancelled', cancelled_at=? WHERE id=? AND status='pending_payment' AND pay_deadline_at < ?").run(nowIso(), o.id, now);
+      if (up.changes === 0) return false;
+      if (o.bargain_id) db.prepare("UPDATE market_bargains SET status='expired' WHERE id=?").run(o.bargain_id);
+      const rk = `bargain_expire:${o.bargain_id || o.id}`;
+      const coin = applyCoinRaw({ fromUserId: o.buyer_id, amount: o.price_coin, type: 'refund', relatedType: 'market_bargain', relatedId: o.bargain_id || o.id, idempotencyKey: rk });
+      const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(o.item_id);
+      if (!coin.error) writeLedger({ sessionId: item?.session_id, bizType: 'bargain_unfreeze', bizId: o.bargain_id || o.id, op: 'refund', userId: o.buyer_id, amount: o.price_coin, coinTxId: coin.txId, idempotencyKey: `${rk}:ledger` });
+      const session = item ? getSession(item.session_id) : null;
+      if (session && session.status === 'open') {
+        db.prepare("UPDATE market_items SET status='active', reserved_order_id=NULL WHERE id=? AND status='reserved'").run(o.item_id);
+      } else {
+        db.prepare("UPDATE market_items SET status='expired', reserved_order_id=NULL WHERE id=? AND status='reserved'").run(o.item_id);
+      }
+      return true;
+    });
+    if (r.value) cancelled++;
+  }
+  return { cancelled };
+}
+
+// 3) 盲盒保证金 held→released：举报期过且无 pending 纠纷则退还保证金
+export function releaseBlindboxHolds(now) {
+  const helds = db.prepare("SELECT * FROM market_blindbox_configs WHERE status='held' AND hold_until IS NOT NULL AND hold_until < ?").all(now);
+  let released = 0;
+  for (const bc of helds) {
+    const pendingDispute = db.prepare("SELECT id FROM market_disputes WHERE item_id=? AND status IN ('pending','reviewing') LIMIT 1").get(bc.item_id);
+    if (pendingDispute) continue;
+    const r = runTx(() => {
+      const up = db.prepare("UPDATE market_blindbox_configs SET status='released', released_at=? WHERE id=? AND status='held'").run(nowIso(), bc.id);
+      if (up.changes === 0) return false;
+      const seller = db.prepare('SELECT seller_id, session_id FROM market_items WHERE id=?').get(bc.item_id);
+      if (seller && bc.deposit_coin > 0) {
+        const rk = `blindbox_release:${bc.item_id}`;
+        const coin = applyCoinRaw({ fromUserId: seller.seller_id, amount: bc.deposit_coin, type: 'refund', relatedType: 'market_blindbox_deposit', relatedId: bc.item_id, idempotencyKey: rk });
+        if (!coin.error) writeLedger({ sessionId: seller.session_id, bizType: 'blindbox_deposit_refund', bizId: bc.item_id, op: 'refund', userId: seller.seller_id, amount: bc.deposit_coin, coinTxId: coin.txId, idempotencyKey: `${rk}:ledger` });
+      }
+      return true;
+    });
+    if (r.value) released++;
+  }
+  return { released };
+}
+
+// 4) 店铺每周竞拍结算：到期 term_week 触发 settleShopTerms（幂等）
+export function settleDueShopTerms(now) {
+  const due = db.prepare("SELECT DISTINCT term_week FROM market_shop_bids WHERE status='active' AND deadline_at IS NOT NULL AND deadline_at < ?").all(now);
+  for (const d of due) settleShopTerms(d.term_week);
+  return { settled: due.map((d) => d.term_week) };
 }
 
 // ============================================================
