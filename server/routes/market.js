@@ -515,8 +515,9 @@ export function confirmOrder(buyerId, orderId) {
     db.prepare("UPDATE market_items SET status='sold', sold_at=? WHERE id=? AND stock=1").run(nowIso(), order.item_id);
     db.prepare("UPDATE market_items SET status='sold' WHERE id=? AND stock>1 AND sold_count>=stock").run(order.item_id);
 
-    // 信誉事件：完成
+    // 信誉事件：完成 + 实时重算
     db.prepare("INSERT OR IGNORE INTO market_reputation_events (user_id, order_id, event, created_at) VALUES (?, ?, 'completion', ?)").run(order.seller_id, orderId, nowIso());
+    recomputeReputation(order.seller_id);
     return true;
   });
   if (r.error) return r;
@@ -671,6 +672,7 @@ export function openBlindbox(buyerId, orderId) {
     db.prepare("UPDATE market_orders SET status='completed', completed_at=? WHERE id=? AND status='paid_escrow'").run(nowIso(), orderId);
     // 盲盒开盒即成交，同样记 completion 事件（与 confirmOrder 对齐）
     db.prepare("INSERT OR IGNORE INTO market_reputation_events (user_id, order_id, event, created_at) VALUES (?, ?, 'completion', ?)").run(order.seller_id, orderId, nowIso());
+    recomputeReputation(order.seller_id);
     // 盲盒开盒即划账（charge）：托管 → 卖家 + 手续费
     const fee = order.fee_coin;
     const net = order.price_coin - fee;
@@ -860,6 +862,7 @@ export function resolveDispute(adminId, disputeId, outcome) {
       const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(dispute.order_id);
       if (order) {
         db.prepare("INSERT OR IGNORE INTO market_reputation_events (user_id, order_id, event, created_at) VALUES (?, ?, 'dispute_lost', ?)").run(order.seller_id, dispute.order_id, nowIso());
+        recomputeReputation(order.seller_id);
         const bc = db.prepare('SELECT * FROM market_blindbox_configs WHERE item_id=?').get(order.item_id);
         if (bc) {
           const itemSessionId = db.prepare('SELECT session_id FROM market_items WHERE id=?').get(order.item_id)?.session_id;
@@ -874,6 +877,59 @@ export function resolveDispute(adminId, disputeId, outcome) {
   });
   if (r.error) return r;
   return { ok: true };
+}
+
+// 重算卖家信誉（实时聚合，基于 market_orders 状态 + market_reputation_events 事件）
+export function recomputeReputation(sellerId) {
+  const orders = db.prepare("SELECT status, COUNT(*) AS c FROM market_orders WHERE seller_id=? AND status IN ('completed','cancelled','refunded') GROUP BY status").all(sellerId);
+  const by = {};
+  for (const r of orders) by[r.status] = r.c;
+  const completed = by.completed ?? 0;
+  const cancelled = by.cancelled ?? 0;
+  const refunded = by.refunded ?? 0;
+  const orderCount = completed; // 权威成交数（cancelled/refunded 不计入量级）
+
+  const ratingRow = db.prepare("SELECT COUNT(*) AS rated, COALESCE(SUM(CASE WHEN rating >= 4 THEN 1 ELSE 0 END), 0) AS good FROM market_reputation_events WHERE user_id=? AND event='rating'").get(sellerId);
+  const ratedCount = ratingRow.rated;
+  const goodCount = ratingRow.good;
+  const disputeLost = db.prepare("SELECT COUNT(*) AS c FROM market_reputation_events WHERE user_id=? AND event='dispute_lost'").get(sellerId).c;
+
+  // rates（REAL，不提前取整，只在最终 score 时 Math.round）
+  const goodRate = (goodCount + 5) / (ratedCount + 10); // Laplace：0 评价 = 0.5（中性）
+  const totalTerminated = completed + cancelled + refunded;
+  const completionRate = totalTerminated > 0 ? completed / totalTerminated : 1; // 语义：还没违约过
+  const cancelRate = totalTerminated > 0 ? cancelled / totalTerminated : 0;      // v1 无卖家取消，恒 0
+  const disputeLostRate = completed > 0 ? disputeLost / completed : 0;
+
+  const protectedOrders = Math.max(0, 5 - orderCount); // 公式算，不用字段递减
+
+  let score;
+  if (protectedOrders > 0) {
+    score = 70;
+  } else {
+    score = Math.round(Math.max(0, Math.min(100,
+      70 + (goodRate - 0.5) * 40 - cancelRate * 30 - disputeLostRate * 50 + Math.min(orderCount, 40) * 0.5
+    )));
+  }
+
+  let level;
+  if (orderCount < 5) level = 'new';
+  else if (score >= 90 && orderCount >= 20) level = 'veteran';
+  else if (score >= 80) level = 'trusted';
+  else if (score >= 60) level = 'regular';
+  else level = 'risky';
+
+  db.prepare(`
+    INSERT INTO market_reputations (user_id, score, level, order_count, good_rate, completion_rate, cancel_rate, dispute_lost_rate, protected_orders, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      score=excluded.score, level=excluded.level, order_count=excluded.order_count,
+      good_rate=excluded.good_rate, completion_rate=excluded.completion_rate,
+      cancel_rate=excluded.cancel_rate, dispute_lost_rate=excluded.dispute_lost_rate,
+      protected_orders=excluded.protected_orders, updated_at=excluded.updated_at
+  `).run(sellerId, score, level, orderCount, goodRate, completionRate, cancelRate, disputeLostRate, protectedOrders, nowIso());
+
+  return { score, goodRate, completionRate, cancelRate, disputeLostRate, orderCount, protectedOrders, level };
 }
 
 // 官方秒杀：SYSTEM 作为卖家发布，差价补贴走 budget_spend（模型 A）
