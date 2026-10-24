@@ -27,6 +27,7 @@ import verificationRouter from './routes/verification.js';
 import friendsRouter from './routes/friends.js';
 import conversationsRouter from './routes/conversations.js';
 import adminRouter from './routes/admin.js';
+import informationRouter from './routes/information.js';
 import { requireAuth, getSessionUser } from './auth.js';
 import { triggerAchievement, notifyNewProgressAchievements } from './achievements.js';
 import errorHandler from './error-handler.js';
@@ -82,6 +83,8 @@ app.use('/api', stickersRouter);
 app.use('/api', verificationRouter);
 app.use('/api', friendsRouter);
 app.use('/api', conversationsRouter);
+// 信息大厅：挂在 adminRouter 之前（admin 路由带无路径 requireRole，会拦截所有 /api/*）
+app.use('/api/information', informationRouter);
 app.use('/api', adminRouter);
 
 // 未匹配的 /api 路由

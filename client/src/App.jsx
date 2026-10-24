@@ -17,6 +17,7 @@ import CoOnlinePage from './pages/CoOnlinePage.jsx';
 import SignInPage from './pages/SignInPage.jsx';
 import MarketPage from './pages/MarketPage.jsx';
 import LotteryPage from './pages/LotteryPage.jsx';
+import InformationHallPage from './pages/InformationHallPage.jsx';
 
 const TOKEN_KEY = 'campus_token';
 
@@ -87,6 +88,7 @@ export default function App() {
             <Route path="/task/:id" element={<TaskDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/co-online" element={<CoOnlinePage />} />
+            <Route path="/information" element={<InformationHallPage />} />
             <Route path="*" element={null} />
           </Routes>
         </Layout>

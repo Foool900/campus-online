@@ -15,7 +15,7 @@ export default function HudOverlay({ children }) {
   }
 
   // 市场 / 设置：全屏页面外壳
-  if (location.pathname === '/market' || location.pathname === '/settings') {
+  if (location.pathname === '/market' || location.pathname === '/settings' || location.pathname === '/information') {
     return (
       <div className="fullscreen-page">
         {children}

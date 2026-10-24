@@ -239,6 +239,17 @@ export const api = {
   triggerAchievement: (code) => request('/api/achievements/trigger', { method: 'POST', body: JSON.stringify({ code }) }),
   trackPageOpen: (page) => request('/api/achievements/page-open', { method: 'POST', body: JSON.stringify({ page }) }),
   world: () => request('/api/world'),
+  // 信息大厅
+  informationSearch: (q) => request(`/api/information/search?q=${encodeURIComponent(q)}`),
+  informationPosts: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+    });
+    const s = qs.toString();
+    return request(`/api/information/posts${s ? `?${s}` : ''}`);
+  },
+  informationNews: () => request('/api/information/news'),
 };
 
 export default api;

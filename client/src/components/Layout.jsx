@@ -220,6 +220,7 @@ export default function Layout({ children }) {
             onAchievements={() => navigate('/profile?tab=achievements')}
             onLeaderboard={() => navigate('/leaderboard')}
             onFriends={() => navigate('/co-online')}
+            onInformationHall={() => navigate('/information')}
           />
           <GuideArrow />
           <Gacha onGacha={gacha} />

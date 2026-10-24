@@ -73,6 +73,13 @@ const ICONS = {
       <path d="M3 7h10v2H3zM4 9v5h8V9" />
     </>
   ),
+  hall: (
+    <>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 2v2M8 12v2M2 8h2M12 8h2" />
+      <circle cx="8" cy="8" r="2.2" />
+    </>
+  ),
 };
 
 function HudIcon({ name }) {
@@ -131,7 +138,7 @@ export function TopLeft({ campuses, campusId, onSwitchMap, onSwitchWorld }) {
   );
 }
 
-export function TopRight({ user, onProfile, onAchievements, onLeaderboard, onFriends }) {
+export function TopRight({ user, onProfile, onAchievements, onLeaderboard, onFriends, onInformationHall }) {
   const [unread, setUnread] = useState(0);
   const location = useLocation();
 
@@ -152,6 +159,13 @@ export function TopRight({ user, onProfile, onAchievements, onLeaderboard, onFri
 
   return (
     <div className="absolute" style={{ top: 16, right: 16, zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+      <button
+        className="hud-btn"
+        onClick={onInformationHall}
+        style={{ alignSelf: 'flex-start', color: '#8fd3ff', borderColor: 'rgba(143,211,255,0.4)' }}
+      >
+        <HudIcon name="hall" />Horizon
+      </button>
       <div className="hud-panel tr-card">
         <div className="tr-avatar">
           <span className="tr-avatar-em">{user?.avatar || 'USR'}</span>
