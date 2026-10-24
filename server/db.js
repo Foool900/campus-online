@@ -644,12 +644,6 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_ledger_biz  ON market_ledger(biz_type, biz_id);
     CREATE INDEX IF NOT EXISTS idx_ledger_user ON market_ledger(user_id);
 
-    -- 公共奖池（单行，id 恒 1；交易手续费流入，抽奖支出）
-    CREATE TABLE IF NOT EXISTS treasury (
-      id           INTEGER PRIMARY KEY CHECK (id = 1),
-      balance_coin INTEGER NOT NULL DEFAULT 0
-    );
-
     -- 抽奖记录（Step 4 起：仅记录，非完整审计；draw_id 用作幂等键）
     CREATE TABLE IF NOT EXISTS lottery_draws (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
