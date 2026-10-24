@@ -51,7 +51,7 @@ export default function MarketPage() {
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('');
   const [type, setType] = useState('normal');
-  const [offer, setOffer] = useState('');
+  const [offers, setOffers] = useState({}); // itemId -> 砍价输入串（每件商品独立，避免共享输入框）
   const [description, setDescription] = useState('');
   const [boxContent, setBoxContent] = useState('');
   const [mktConfig, setMktConfig] = useState(null);
@@ -75,7 +75,12 @@ export default function MarketPage() {
   useEffect(() => {
     load();
     const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    // 开市/闭市状态、摊位、商品、订单每 30s 轮询（仅页面可见时），
+    // 让「到点开市/闭市、他人抢摊/上架」等状态自动同步，无需手动刷新。
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') load();
+    }, 30000);
+    return () => { clearInterval(t); clearInterval(poll); };
   }, [load]);
 
   // 服务端时间基准
@@ -136,9 +141,14 @@ export default function MarketPage() {
   };
   const bargain = async (item) => {
     setErr(''); setMsg('');
-    const o = Number(offer);
+    const o = Number(offers[item.id] ?? '');
     if (!Number.isInteger(o) || o <= 0 || o >= item.priceCoin) return setErr('砍价金额需为正整数且低于标价');
-    try { await api.marketBargain(item.id, o); reload(); setMsg('砍价已提交（金币已冻结）'); } catch (e) { setErr(e.message); }
+    try {
+      await api.marketBargain(item.id, o);
+      setOffers((m) => { const n = { ...m }; delete n[item.id]; return n; });
+      reload();
+      setMsg('砍价已提交（金币已冻结）');
+    } catch (e) { setErr(e.message); }
   };
   const pay = async (o) => { setErr(''); setMsg(''); try { await api.marketPayOrder(o.id); reload(); setMsg('已支付'); } catch (e) { setErr(e.message); } };
   const confirmOrder = async (o) => { setErr(''); setMsg(''); try { await api.marketConfirmOrder(o.id); reload(); setMsg('已确认收货'); } catch (e) { setErr(e.message); } };
@@ -252,7 +262,7 @@ export default function MarketPage() {
             <div className="reward-chip">🪙 {i.priceCoin}</div>
             {i.sellerId !== user?.id && open && isStudent && (
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
-                <input type="number" placeholder="砍价" value={offer} onChange={(e) => setOffer(e.target.value)} style={{ width: 80 }} />
+                <input type="number" placeholder="砍价" value={offers[i.id] ?? ''} onChange={(e) => setOffers((m) => ({ ...m, [i.id]: e.target.value }))} style={{ width: 80 }} />
                 <button className="hud-btn" onClick={() => bargain(i)}>砍价</button>
                 <button className="btn primary" onClick={() => buy(i)}>购买</button>
               </div>
