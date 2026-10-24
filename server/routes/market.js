@@ -4,7 +4,7 @@ import { db, nowIso } from '../db.js';
 import { requireRole } from '../auth.js';
 import { config } from '../config.js';
 import { applyCoinRaw } from '../coin.js';
-import { treasuryBalance, systemAccountId } from '../treasury.js';
+import { systemAccountId } from '../treasury.js';
 
 const router = Router();
 
@@ -40,6 +40,11 @@ function cfg(key) {
     try { return JSON.parse(row.value); } catch { /* ignore */ }
   }
   return config.market[key];
+}
+
+// 当前奖池余额 = SYSTEM 账户 coin（真实账户，不是旧 treasury 表）
+function getSystemBalance() {
+  return db.prepare('SELECT coin FROM users WHERE id = ?').get(systemAccountId())?.coin ?? 0;
 }
 
 function writeLedger({ sessionId = null, bizType, bizId = null, op, userId = null, counterpartyId = null, amount, coinTxId = null, idempotencyKey }) {
@@ -381,7 +386,7 @@ function buyOfficialFlashSale(buyerId, item) {
 
       return { orderId, price: item.price_coin, subsidy };
     })();
-    return { ok: true, ...r, treasury: treasuryBalance() };
+    return { ok: true, ...r, treasury: getSystemBalance() };
   } catch (e) {
     if (e && e.status) return { error: e.message, code: e.code, status: e.status };
     throw e;
@@ -987,7 +992,7 @@ router.get('/market/session', (req, res) => {
   res.json({
     session,
     serverTime: nowIso(),
-    treasury: treasuryBalance(),
+    treasury: getSystemBalance(),
     config: {
       depositCoin: cfg('depositCoin'),
       broadcastFee: cfg('broadcast_fee') ?? 0,

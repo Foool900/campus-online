@@ -96,6 +96,20 @@ test('官方秒杀：买家余额不足，COIN_INSUFFICIENT 且库存回滚', ()
   assert.equal(db.prepare('SELECT sold_count FROM market_items WHERE id=?').get(item.itemId).sold_count, 0); // 库存回滚
 });
 
+test('官方秒杀：返回的 treasury 字段 = 交易后 SYSTEM 账户余额（读 SYSTEM，非旧 treasury 表）', () => {
+  const sid = openSession();
+  const admin = makeUser(0);
+  const buyer = makeUser(1000);
+  const sysId = systemAccountId();
+  db.prepare('UPDATE users SET coin=500, frozen_coin=0 WHERE id=?').run(sysId); // 预置 SYSTEM 500
+  const item = createFlashSale(admin, { sessionId: sid, title: '秒杀', priceCoin: 60, costCoin: 100, stock: 1 });
+
+  const r = buyItem(buyer, item.itemId);
+  assert.equal(r.error, undefined);
+  assert.equal(r.treasury, 500 + 60); // 买家 60 已进 SYSTEM，返回的是 SYSTEM 真实余额
+  assert.equal(db.prepare('SELECT coin FROM users WHERE id=?').get(sysId).coin, 500 + 60);
+});
+
 test('普通商品：不触发 flash_sale_subsidy 流水，仍走 escrow', () => {
   const sid = openSession();
   const seller = makeUser(1000);
