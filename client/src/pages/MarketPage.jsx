@@ -57,19 +57,22 @@ export default function MarketPage() {
   const [mktConfig, setMktConfig] = useState(null);
   const [boxResult, setBoxResult] = useState(null);
   const [busyBoxId, setBusyBoxId] = useState(null); // 开盒进行中的订单 id，防双击
+  const [busyBuyId, setBusyBuyId] = useState(null); // 购买进行中的商品 id，防双击
 
   const isStudent = user && (user.role === 'student' || user.role === 'admin');
 
   const load = useCallback(() => {
-    api.marketSession().then((r) => {
-      setSession(r.session);
-      setTreasury(r.treasury ?? 0);
-      setMktConfig(r.config ?? null);
-      setServerOffset(new Date(r.serverTime).getTime() - Date.now());
-    }).catch((e) => setErr(e.message));
-    api.marketStalls().then(setStalls).catch(() => {});
-    api.marketItems().then(setItems).catch(() => {});
-    api.marketMyOrders().then(setOrders).catch(() => {});
+    return Promise.all([
+      api.marketSession().then((r) => {
+        setSession(r.session);
+        setTreasury(r.treasury ?? 0);
+        setMktConfig(r.config ?? null);
+        setServerOffset(new Date(r.serverTime).getTime() - Date.now());
+      }).catch((e) => setErr(e.message)),
+      api.marketStalls().then(setStalls).catch(() => {}),
+      api.marketItems().then(setItems).catch(() => {}),
+      api.marketMyOrders().then(setOrders).catch(() => {}),
+    ]);
   }, []);
 
   useEffect(() => {
@@ -94,7 +97,7 @@ export default function MarketPage() {
     ? blindboxAmounts(priceNum, mktConfig)
     : null;
 
-  const reload = () => { load(); };
+  const reload = () => load();
 
   const grab = async () => {
     setErr(''); setMsg('');
@@ -137,7 +140,13 @@ export default function MarketPage() {
   };
   const buy = async (item) => {
     setErr(''); setMsg('');
-    try { const r = await api.marketBuy(item.id); reload(); setMsg(`已购买，订单 #${r.orderId}（已冻结 ${r.price} 金币）`); } catch (e) { setErr(e.message); }
+    setBusyBuyId(item.id);
+    try {
+      const r = await api.marketBuy(item.id);
+      await reload(); // 等列表刷新完成再放行，避免刷新期间还能再点
+      setMsg(`已购买，订单 #${r.orderId}（已冻结 ${r.price} 金币）`);
+    } catch (e) { setErr(e.message); }
+    finally { setBusyBuyId(null); }
   };
   const bargain = async (item) => {
     setErr(''); setMsg('');
@@ -264,7 +273,9 @@ export default function MarketPage() {
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
                 <input type="number" placeholder="砍价" value={offers[i.id] ?? ''} onChange={(e) => setOffers((m) => ({ ...m, [i.id]: e.target.value }))} style={{ width: 80 }} />
                 <button className="hud-btn" onClick={() => bargain(i)}>砍价</button>
-                <button className="btn primary" onClick={() => buy(i)}>购买</button>
+                <button className="btn primary" onClick={() => buy(i)} disabled={busyBuyId === i.id}>
+                  {busyBuyId === i.id ? '购买中…' : '购买'}
+                </button>
               </div>
             )}
           </div>
