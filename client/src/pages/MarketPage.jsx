@@ -234,6 +234,7 @@ export default function MarketPage() {
             <span style={{ fontWeight: 600 }}>{i.title}</span>
             <span className="post-category" style={{ marginLeft: 8 }}>{TYPE_LABELS[i.type]}</span>
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>{i.sellerName} · 库存 {i.soldCount}/{i.stock}</div>
+            {i.description && <div style={{ fontSize: 12, color: 'var(--muted)' }}>{i.description}</div>}
           </div>
           <div style={{ textAlign: 'right' }}>
             <div className="reward-chip">🪙 {i.priceCoin}</div>
