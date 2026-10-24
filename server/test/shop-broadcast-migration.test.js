@@ -6,7 +6,7 @@ process.env.DB_PATH = ':memory:';
 const { db, initDb, nowIso } = await import('../db.js');
 const { config } = await import('../config.js');
 const { systemAccountId } = await import('../treasury.js');
-const { createSession, ensureMarketShops, bidShop, settleShopTerms, broadcast } = await import('../routes/market.js');
+const { createSession, ensureMarketShops, bidShop, settleShopTerms, broadcast, listBroadcasts } = await import('../routes/market.js');
 
 initDb();
 
@@ -113,6 +113,31 @@ test('喇叭费：摊主 −fee、SYSTEM +fee；fee=0 无流水', () => {
   assert.equal(acct(user).coin, 1000 - 10); // 不变
   assert.equal(sysCoin(), sysBefore2); // SYSTEM 不变
   assert.equal(db.prepare("SELECT COUNT(*) AS c FROM market_ledger WHERE biz_type='broadcast_fee'").get().c, 1); // 无新增
+});
+
+test('喇叭列表：ASC 排序 + 昵称 + fee/limit/myCount；myCount 含 removed、列表不含', () => {
+  const sid = openSession();
+  const u1 = makeUser(100);
+  const u2 = makeUser(100);
+
+  broadcast(u1, sid, '第一条');
+  broadcast(u2, sid, '第二条');
+  broadcast(u1, sid, '第三条');
+
+  const r = listBroadcasts(sid, u1);
+  assert.equal(r.fee, 0);          // 上一测试已把 broadcast_fee 改回 0
+  assert.equal(r.limit, 3);
+  assert.equal(r.myCount, 2);      // u1 本期两条
+  assert.equal(r.broadcasts.length, 3);
+  assert.deepEqual(r.broadcasts.map((b) => b.content), ['第一条', '第二条', '第三条']); // 时间正序 ASC
+  assert.ok(r.broadcasts[0].nickname); // join users 拿到昵称
+  assert.equal(r.broadcasts[0].userId, u1);
+
+  // removed 仍计入 myCount，但不出现在 published 列表
+  db.prepare("UPDATE market_broadcasts SET status='removed' WHERE user_id=? AND content='第一条'").run(u1);
+  const r2 = listBroadcasts(sid, u1);
+  assert.equal(r2.myCount, 2);                       // 用过即计入，不受 status 影响
+  assert.deepEqual(r2.broadcasts.map((b) => b.content), ['第二条', '第三条']);
 });
 
 test('店铺租金回滚：transfer 后 ledger 冲突，term/frozen/SYSTEM 全回滚', () => {

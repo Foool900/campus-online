@@ -851,6 +851,31 @@ export function broadcast(userId, sessionId, content, stallId = null) {
   return { ok: true };
 }
 
+// 全服喇叭列表（滚动条数据源，纯只读）：近 20 条 published，时间正序（子查询先倒序取最近，再正序）
+// myCount 统计本期该用户全部喇叭（含 removed，用过即计入），与上限判断口径一致
+export function listBroadcasts(sessionId, userId) {
+  const rows = db.prepare(`
+    SELECT * FROM (
+      SELECT b.id, b.session_id, b.user_id, b.content, b.fee_coin, b.stall_id, b.created_at, u.nickname
+      FROM market_broadcasts b
+      JOIN users u ON u.id = b.user_id
+      WHERE b.session_id = ? AND b.status = 'published'
+      ORDER BY b.id DESC
+      LIMIT 20
+    ) ORDER BY id ASC
+  `).all(sessionId);
+  const myCount = db.prepare('SELECT COUNT(*) AS c FROM market_broadcasts WHERE session_id = ? AND user_id = ?').get(sessionId, userId).c;
+  return {
+    fee: cfg('broadcast_fee') ?? 0,
+    limit: cfg('broadcastPerUserPerSession'),
+    myCount,
+    broadcasts: rows.map((r) => ({
+      id: r.id, sessionId: r.session_id, userId: r.user_id, nickname: r.nickname,
+      content: r.content, feeCoin: r.fee_coin, stallId: r.stall_id, createdAt: r.created_at,
+    })),
+  };
+}
+
 export function createDispute(reporterId, { orderId = null, itemId = null, type = 'report', reason, evidenceJson = null }) {
   const rtext = (reason || '').toString().trim();
   if (!rtext) return { error: '请填写举报原因', status: 400 };
@@ -1342,6 +1367,12 @@ router.post('/market/disputes/:id/resolve', requireRole('admin'), (req, res) => 
   const r = resolveDispute(req.user.id, Number(req.params.id), req.body?.outcome);
   if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
+});
+
+router.get('/market/broadcasts', (req, res) => {
+  const sessionId = Number(req.query.sessionId) || currentSession()?.id;
+  if (!sessionId) return res.json({ fee: cfg('broadcast_fee') ?? 0, limit: cfg('broadcastPerUserPerSession'), myCount: 0, broadcasts: [] });
+  res.json(listBroadcasts(sessionId, req.user.id));
 });
 
 router.post('/market/broadcasts', requireRole('student', 'admin'), (req, res) => {

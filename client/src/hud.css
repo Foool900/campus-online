@@ -767,6 +767,13 @@ input, select, textarea { color: var(--text); }
 .view-link { color: #8fd3ff; font-size: 11px; font-family: 'Consolas', monospace; letter-spacing: 1px; }
 .todo-card.done .todo-title { color: var(--muted); }
 .reward-chip { background: rgba(143, 211, 255, 0.12); color: #8fd3ff; border: 1px solid rgba(143,211,255,.25); border-radius: 2px; font-family: 'Consolas', monospace; padding: 1px 6px; }
+/* 全服喇叭滚动条：内容重复一份，translateX(-50%) 无缝循环，hover 暂停 */
+.broadcast-ticker { overflow: hidden; white-space: nowrap; }
+.broadcast-ticker-track { display: inline-flex; min-width: 100%; animation: broadcast-marquee 28s linear infinite; }
+.broadcast-ticker-track:hover { animation-play-state: paused; }
+.broadcast-ticker-item { margin-right: 40px; white-space: nowrap; color: var(--muted); font-family: 'Consolas', 'Menlo', monospace; font-size: 12px; }
+.broadcast-ticker-item b { color: #8fd3ff; font-weight: 600; }
+@keyframes broadcast-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .done-badge { background: rgba(52, 211, 153, 0.16); color: #6ee7b7; }
 
 /* 进度条 */

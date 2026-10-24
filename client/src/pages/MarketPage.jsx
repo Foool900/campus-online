@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
 import MarketBargainInbox from '../components/MarketBargainInbox.jsx';
 import MarketShopAuction from '../components/MarketShopAuction.jsx';
+import MarketBroadcastBar from '../components/MarketBroadcastBar.jsx';
 
 const TYPE_LABELS = { normal: '普通', blindbox: '盲盒', flash_sale: '秒杀' };
 const STALL_STATUS = { available: '空', reserved: '预留', occupied: '营业', released: '已撤', expired: '到期' };
@@ -134,6 +135,9 @@ export default function MarketPage() {
         <h1>🏮 校园夜市</h1>
         <p>限时开市 · 抢摊位 · 淘好物</p>
       </div>
+
+      {/* 全服喇叭（per-session，滚动条 + composer） */}
+      <MarketBroadcastBar open={open} sessionId={sessionId} />
 
       {session && (
         <div className={'task-wallet' + (open ? '' : ' closed')}>
