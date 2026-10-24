@@ -4,7 +4,7 @@ import { db, nowIso } from '../db.js';
 import { requireRole } from '../auth.js';
 import { config } from '../config.js';
 import { applyCoinRaw } from '../coin.js';
-import { treasuryBalance, addTreasury, spendTreasury } from '../treasury.js';
+import { treasuryBalance, addTreasury, spendTreasury, systemAccountId } from '../treasury.js';
 
 const router = Router();
 
@@ -344,6 +344,50 @@ export function removeItem(userId, itemId) {
 // 购买 / 订单
 // ============================================================
 
+// 官方秒杀购买（模型 A）：买家付款真实进 SYSTEM（pay），补贴只作账面指标（budget_spend）
+function buyOfficialFlashSale(buyerId, item) {
+  const sysId = systemAccountId();
+  const subsidy = (item.cost_coin ?? item.price_coin) - item.price_coin;
+  const budget = cfg('flashSaleBudget');
+
+  try {
+    const r = db.transaction(() => {
+      // 1. 扣库存
+      const stockRes = db.prepare("UPDATE market_items SET sold_count = sold_count + 1 WHERE id=? AND status='active' AND sold_count < stock").run(item.id);
+      if (stockRes.changes === 0) throwBiz('SOLD_OUT', '商品已售罄', 409);
+
+      // 2-3. budget 校验（累计补贴，按 session 独立）
+      const spent = db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM market_ledger WHERE biz_type='flash_sale_subsidy' AND session_id=?").get(item.session_id).s;
+      if (spent + subsidy > budget) throwBiz('FLASH_SALE_BUDGET_EXCEEDED', '秒杀补贴预算已用完', 409);
+
+      // 4. 建订单（先拿 order_id）
+      const o = db.prepare("INSERT INTO market_orders (item_id, buyer_id, seller_id, type, price_coin, fee_coin, status, completed_at, idempotency_key, created_at) VALUES (?, ?, ?, 'official_flash_sale', ?, 0, 'completed', ?, ?, ?)")
+        .run(item.id, buyerId, sysId, item.price_coin, nowIso(), `flash_sale_order:${buyerId}:${item.id}`, nowIso());
+      const orderId = Number(o.lastInsertRowid);
+
+      // 5. pay(buyer → SYSTEM, price)
+      const payKey = `flash_sale_sale:${orderId}`;
+      const pay = applyCoinRaw({ fromUserId: buyerId, toUserId: sysId, amount: item.price_coin, type: 'pay', relatedType: 'market', relatedId: orderId, idempotencyKey: payKey });
+      if (pay.error) throwBiz(pay.code, pay.error, pay.status);
+
+      // 6. ledger treasury_in（真实划转，挂 coin_tx_id）
+      writeLedger({ sessionId: item.session_id, bizType: 'flash_sale_sale', bizId: orderId, op: 'treasury_in', userId: buyerId, counterpartyId: sysId, amount: item.price_coin, coinTxId: pay.txId, idempotencyKey: `${payKey}:ledger` });
+
+      // 7. ledger budget_spend（账面补贴，无金币，coin_tx_id=NULL）
+      writeLedger({ sessionId: item.session_id, bizType: 'flash_sale_subsidy', bizId: orderId, op: 'budget_spend', amount: subsidy, idempotencyKey: `${payKey}:budget` });
+
+      // 8. 商品 sold_count>=stock → sold
+      db.prepare("UPDATE market_items SET status='sold', sold_at=? WHERE id=? AND sold_count>=stock").run(nowIso(), item.id);
+
+      return { orderId, price: item.price_coin, subsidy };
+    })();
+    return { ok: true, ...r, treasury: treasuryBalance() };
+  } catch (e) {
+    if (e && e.status) return { error: e.message, code: e.code, status: e.status };
+    throw e;
+  }
+}
+
 export function buyItem(buyerId, itemId) {
   const sys = assertNotSystem(buyerId);
   if (sys) return sys;
@@ -352,6 +396,11 @@ export function buyItem(buyerId, itemId) {
   if (item.seller_id === buyerId) return { error: '不能购买自己的商品', status: 400 };
   const session = getSession(item.session_id);
   assertOpen(session);
+
+  // 官方秒杀分支（模型 A）
+  if (item.is_official && item.type === 'flash_sale') {
+    return buyOfficialFlashSale(buyerId, item);
+  }
 
   const feeRate = cfg('tradeFeeRate') ?? config.coin.tradeFeeRate;
   const fee = Math.floor(item.price_coin * feeRate);
@@ -776,15 +825,17 @@ export function resolveDispute(adminId, disputeId, outcome) {
   return { ok: true };
 }
 
-// 官方秒杀：系统账号发布，差价补贴 treasury_out
-export function createFlashSale(adminId, { sessionId, title, priceCoin, stock, budget = null }) {
+// 官方秒杀：SYSTEM 作为卖家发布，差价补贴走 budget_spend（模型 A）
+export function createFlashSale(adminId, { sessionId, title, priceCoin, costCoin, stock }) {
   const session = getSession(sessionId);
   if (!session) return { error: '期次不存在', status: 404 };
   const price = Number(priceCoin);
+  const cost = Number(costCoin);
   if (!title || !Number.isInteger(price) || price <= 0 || !Number.isInteger(stock) || stock <= 0) return { error: '参数无效', status: 400 };
+  if (!Number.isInteger(cost) || cost <= price) return { error: '原价必须为正整数且高于秒杀价', status: 400 };
   const key = `flash:${sessionId}:${randomBytes(8).toString('hex')}`;
-  const info = db.prepare("INSERT INTO market_items (session_id, seller_id, type, title, price_coin, stock, status, is_official, idempotency_key, created_at) VALUES (?, ?, 'flash_sale', ?, ?, ?, 'active', 1, ?, ?)")
-    .run(sessionId, adminId, title, price, stock, key, nowIso());
+  const info = db.prepare("INSERT INTO market_items (session_id, seller_id, type, title, price_coin, cost_coin, stock, status, is_official, idempotency_key, created_at) VALUES (?, ?, 'flash_sale', ?, ?, ?, ?, 'active', 1, ?, ?)")
+    .run(sessionId, systemAccountId(), title, price, cost, stock, key, nowIso());
   return { itemId: Number(info.lastInsertRowid) };
 }
 

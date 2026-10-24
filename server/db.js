@@ -27,6 +27,21 @@ export function initDb() {
     const _orderCols = db.prepare('PRAGMA table_info(market_orders)').all().map((c) => c.name);
     if (_orderCols.includes('listing_id')) db.exec('DROP TABLE market_orders;');
   }
+  // 若 market_items 是旧 schema（无 cost_coin 列 / 含旧 CHECK），重建市场商品表族（空数据，直接 drop）
+  const _items = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_items'").get();
+  if (_items) {
+    const _cols = db.prepare('PRAGMA table_info(market_items)').all().map((c) => c.name);
+    if (!_cols.includes('cost_coin')) {
+      db.exec('PRAGMA foreign_keys = OFF;');
+      db.exec('DROP TABLE IF EXISTS market_disputes;');
+      db.exec('DROP TABLE IF EXISTS market_blindbox_opens;');
+      db.exec('DROP TABLE IF EXISTS market_blindbox_configs;');
+      db.exec('DROP TABLE IF EXISTS market_bargains;');
+      db.exec('DROP TABLE IF EXISTS market_orders;');
+      db.exec('DROP TABLE IF EXISTS market_items;');
+      db.exec('PRAGMA foreign_keys = ON;');
+    }
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -437,6 +452,7 @@ export function initDb() {
       title             TEXT    NOT NULL,
       description       TEXT    NOT NULL DEFAULT '',
       price_coin        INTEGER NOT NULL,
+      cost_coin         INTEGER,
       stock             INTEGER NOT NULL DEFAULT 1,
       sold_count        INTEGER NOT NULL DEFAULT 0,
       status            TEXT    NOT NULL DEFAULT 'draft', -- draft | active | reserved | sold | expired | removed
@@ -451,8 +467,7 @@ export function initDb() {
       FOREIGN KEY (session_id) REFERENCES market_sessions(id) ON DELETE CASCADE,
       FOREIGN KEY (stall_id)   REFERENCES market_stalls(id)   ON DELETE SET NULL,
       FOREIGN KEY (shop_id)    REFERENCES market_shops(id)    ON DELETE SET NULL,
-      FOREIGN KEY (seller_id)  REFERENCES users(id)           ON DELETE CASCADE,
-      CHECK (stall_id IS NOT NULL OR shop_id IS NOT NULL OR status IN ('draft','expired','removed'))
+      FOREIGN KEY (seller_id)  REFERENCES users(id)           ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_items_session ON market_items(session_id, status);
     CREATE INDEX IF NOT EXISTS idx_items_seller  ON market_items(seller_id);
@@ -718,4 +733,5 @@ export function initDb() {
   db.exec('DROP TABLE IF EXISTS user_exp;');
   db.exec('DROP TABLE IF EXISTS exp_categories;');
   db.exec('DROP TABLE IF EXISTS todos;');
+
 }
