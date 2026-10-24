@@ -55,6 +55,7 @@ export default function MarketPage() {
   const open = session?.status === 'open';
   const myStall = stalls.find((s) => s.owner_id === user?.id && (s.status === 'reserved' || s.status === 'occupied'));
   const sessionId = session?.id;
+  const activeItems = items.filter((i) => i.status === 'active');
 
   const refresh = () => { load(); setMsg(''); setErr(''); };
 
@@ -160,8 +161,8 @@ export default function MarketPage() {
 
       {/* 商品列表 */}
       <div className="tabs" style={{ margin: '10px 0' }}><span style={{ fontWeight: 600 }}>🛍️ 在售商品</span></div>
-      {items.length === 0 && <div className="empty-state">&gt; NO LISTINGS</div>}
-      {items.map((i) => (
+      {activeItems.length === 0 && <div className="empty-state">&gt; NO LISTINGS</div>}
+      {activeItems.map((i) => (
         <div key={i.id} className="card" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <span style={{ fontWeight: 600 }}>{i.title}</span>
