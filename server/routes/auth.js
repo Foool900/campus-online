@@ -44,7 +44,7 @@ router.post('/auth/register', (req, res) => {
   const name = nickname.trim();
   const col = typeof college === 'string' ? college.trim() : '';
 
-  const existing = db.prepare('SELECT id, password_hash FROM users WHERE nickname = ?').get(name);
+  const existing = db.prepare('SELECT id, password_hash FROM users WHERE nickname = ? COLLATE NOCASE').get(name);
   if (existing) {
     if (existing.password_hash) return res.status(409).json({ error: '该昵称已被注册' });
     // 老账号（无密码）：注册即完成迁移——设置密码
@@ -68,7 +68,7 @@ router.post('/auth/login', (req, res) => {
   if (!name || typeof password !== 'string') {
     return res.status(400).json({ error: '请输入昵称和密码' });
   }
-  const user = db.prepare('SELECT * FROM users WHERE nickname = ?').get(name);
+  const user = db.prepare('SELECT * FROM users WHERE nickname = ? COLLATE NOCASE').get(name);
   if (!user) return res.status(404).json({ error: '用户不存在，请先注册' });
   if (!user.password_hash) return res.status(409).json({ error: '该账号还未设置密码，请先设置密码' });
   if (!verifyPassword(password, user.password_hash)) return res.status(401).json({ error: '密码错误' });
@@ -82,7 +82,7 @@ router.post('/auth/set-password', (req, res) => {
   const err = validateCredential(nickname, password);
   if (err) return res.status(400).json({ error: err });
   const name = nickname.trim();
-  const user = db.prepare('SELECT * FROM users WHERE nickname = ?').get(name);
+  const user = db.prepare('SELECT * FROM users WHERE nickname = ? COLLATE NOCASE').get(name);
   if (!user) return res.status(404).json({ error: '用户不存在，请先注册' });
   if (user.password_hash) return res.status(409).json({ error: '该账号已设置过密码，请直接登录' });
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), user.id);

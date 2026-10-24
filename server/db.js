@@ -731,6 +731,14 @@ export function initDb() {
     db.exec("ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '[]';");
   }
 
+  // 迁移：昵称唯一（大小写不敏感）——昵称即用户名，用于登录与用户区分，禁止重复
+  // 若仍有大小写重复的昵称（历史数据待合并），先跳过并告警，合并后下次启动自动建索引
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS uq_users_nickname_nocase ON users(nickname COLLATE NOCASE);');
+  } catch (e) {
+    console.warn('[db] 跳过昵称唯一索引创建（存在大小写重复的昵称，需先合并）:', e.message);
+  }
+
   // 迁移：achievements 补 type / hint 列
   const achCols = db.prepare('PRAGMA table_info(achievements)').all().map((c) => c.name);
   if (!achCols.includes('type')) {

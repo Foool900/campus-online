@@ -153,7 +153,7 @@ router.post('/admin', requirePermission('ADMIN_GRANT'), (req, res) => {
   const { nickname } = req.body || {};
   const name = typeof nickname === 'string' ? nickname.trim() : '';
   if (!name) return res.status(400).json({ error: '请输入要添加的管理员昵称' });
-  const user = db.prepare('SELECT * FROM users WHERE nickname = ?').get(name);
+  const user = db.prepare('SELECT * FROM users WHERE nickname = ? COLLATE NOCASE').get(name);
   if (!user) return res.status(404).json({ error: '该用户不存在' });
   // 新管理员默认无 RBAC 权限，由超级管理员随后按需分配
   db.prepare("UPDATE users SET role = 'admin', permissions = '[]' WHERE id = ?").run(user.id);
