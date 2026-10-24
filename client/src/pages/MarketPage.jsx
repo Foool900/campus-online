@@ -129,6 +129,7 @@ export default function MarketPage() {
   const pay = async (o) => { setErr(''); setMsg(''); try { await api.marketPayOrder(o.id); reload(); setMsg('已支付'); } catch (e) { setErr(e.message); } };
   const confirmOrder = async (o) => { setErr(''); setMsg(''); try { await api.marketConfirmOrder(o.id); reload(); setMsg('已确认收货'); } catch (e) { setErr(e.message); } };
   const openBox = async (o) => { setErr(''); setMsg(''); try { await api.marketOpenBlindbox(o.id); reload(); setMsg('已开盒 🎁'); } catch (e) { setErr(e.message); } };
+  const deliver = async (o) => { setErr(''); setMsg(''); try { await api.marketDeliverOrder(o.id); reload(); setMsg('已交付'); } catch (e) { setErr(e.message); } };
 
   return (
     <div className="page">
@@ -262,6 +263,22 @@ export default function MarketPage() {
             {o.status === 'pending_payment' && <button className="btn primary" onClick={() => pay(o)}>支付</button>}
             {o.status === 'paid_escrow' && o.item_type === 'blindbox' && <button className="btn primary" onClick={() => openBox(o)}>开盒</button>}
             {['paid_escrow', 'delivered'].includes(o.status) && o.item_type !== 'blindbox' && <button className="btn primary" onClick={() => confirmOrder(o)}>确认收货</button>}
+          </div>
+        </div>
+      ))}
+
+      {/* 我卖出的 */}
+      <div className="tabs" style={{ margin: '12px 0 10px' }}><span style={{ fontWeight: 600 }}>📤 我卖出的</span></div>
+      {orders.sold.length === 0 && <div className="empty-state">&gt; 无订单</div>}
+      {orders.sold.map((o) => (
+        <div key={o.id} className="card" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <span style={{ fontWeight: 600 }}>{o.title}</span>
+            <span className={'status-badge status-' + o.status} style={{ marginLeft: 8 }}>{o.status}</span>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>🪙 {o.price_coin}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {o.status === 'paid_escrow' && o.item_type !== 'blindbox' && <button className="btn primary" onClick={() => deliver(o)}>交付</button>}
           </div>
         </div>
       ))}
