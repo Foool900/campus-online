@@ -72,18 +72,20 @@ export default function MarketPage() {
     ? blindboxAmounts(priceNum, mktConfig)
     : null;
 
-  const refresh = () => { load(); setMsg(''); setErr(''); };
+  const reload = () => { load(); };
 
   const grab = async () => {
     setErr(''); setMsg('');
-    try { await api.marketGrabStall(sessionId); refresh(); } catch (e) { setErr(e.message); }
+    try { await api.marketGrabStall(sessionId); reload(); } catch (e) { setErr(e.message); }
   };
   const confirmStall = async () => {
     if (!myStall) return;
-    try { await api.marketConfirmStall(myStall.id); setMsg('已确认摊位（押金已冻结）'); refresh(); } catch (e) { setErr(e.message); }
+    setErr(''); setMsg('');
+    try { await api.marketConfirmStall(myStall.id); reload(); setMsg('已确认摊位（押金已冻结）'); } catch (e) { setErr(e.message); }
   };
   const createItem = async (e) => {
     e.preventDefault();
+    setErr(''); setMsg('');
     const p = Number(price);
     if (!title.trim() || !Number.isInteger(p) || p <= 0) return setErr('请填写标题和正整数价格');
 
@@ -101,7 +103,7 @@ export default function MarketPage() {
       itemId = r.itemId;
       await api.marketListItem(itemId, { stallId: myStall.id });
       setTitle(''); setPrice(''); setDescription(''); setBoxContent(''); setType('normal');
-      refresh(); // refresh 会清 msg/err，成功提示须在其后 set 才可见
+      reload();
       setMsg(type === 'blindbox' ? `盲盒已上架（已冻结保证金 ${amounts.deposit} 金币）` : '已上架');
     } catch (e) {
       // listItem 失败（如保证金不足）：best-effort 清掉刚建的 draft，一次尝试、静默失败
@@ -112,16 +114,18 @@ export default function MarketPage() {
     }
   };
   const buy = async (item) => {
-    try { const r = await api.marketBuy(item.id); setMsg(`已购买，订单 #${r.orderId}（已冻结 ${r.price} 金币）`); refresh(); } catch (e) { setErr(e.message); }
+    setErr(''); setMsg('');
+    try { const r = await api.marketBuy(item.id); reload(); setMsg(`已购买，订单 #${r.orderId}（已冻结 ${r.price} 金币）`); } catch (e) { setErr(e.message); }
   };
   const bargain = async (item) => {
+    setErr(''); setMsg('');
     const o = Number(offer);
     if (!Number.isInteger(o) || o <= 0 || o >= item.priceCoin) return setErr('砍价金额需为正整数且低于标价');
-    try { await api.marketBargain(item.id, o); setMsg('砍价已提交（金币已冻结）'); refresh(); } catch (e) { setErr(e.message); }
+    try { await api.marketBargain(item.id, o); reload(); setMsg('砍价已提交（金币已冻结）'); } catch (e) { setErr(e.message); }
   };
-  const pay = async (o) => { try { await api.marketPayOrder(o.id); setMsg('已支付'); refresh(); } catch (e) { setErr(e.message); } };
-  const confirmOrder = async (o) => { try { await api.marketConfirmOrder(o.id); setMsg('已确认收货'); refresh(); } catch (e) { setErr(e.message); } };
-  const openBox = async (o) => { try { await api.marketOpenBlindbox(o.id); setMsg('已开盒 🎁'); refresh(); } catch (e) { setErr(e.message); } };
+  const pay = async (o) => { setErr(''); setMsg(''); try { await api.marketPayOrder(o.id); reload(); setMsg('已支付'); } catch (e) { setErr(e.message); } };
+  const confirmOrder = async (o) => { setErr(''); setMsg(''); try { await api.marketConfirmOrder(o.id); reload(); setMsg('已确认收货'); } catch (e) { setErr(e.message); } };
+  const openBox = async (o) => { setErr(''); setMsg(''); try { await api.marketOpenBlindbox(o.id); reload(); setMsg('已开盒 🎁'); } catch (e) { setErr(e.message); } };
 
   return (
     <div className="page">
@@ -233,7 +237,7 @@ export default function MarketPage() {
       ))}
 
       {/* 卖家砍价收件箱 */}
-      <MarketBargainInbox open={open} sessionId={sessionId} onChanged={refresh} />
+      <MarketBargainInbox open={open} sessionId={sessionId} onChanged={reload} />
 
       {/* 我的订单 */}
       <div className="tabs" style={{ margin: '12px 0 10px' }}><span style={{ fontWeight: 600 }}>📦 我买到的</span></div>
