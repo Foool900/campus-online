@@ -215,7 +215,7 @@ export default function CoOnlinePage() {
         {/* 左栏 / 手机列表页 */}
         <aside className="co-online-list">
           <div className="co-online-search">
-            <input placeholder="搜索用户加好友" value={searchQuery} onChange={(e) => onSearchChange(e.target.value)} />
+            <input placeholder="输入完整昵称搜索好友" value={searchQuery} onChange={(e) => onSearchChange(e.target.value)} />
           </div>
 
           {searchQuery.trim() ? (

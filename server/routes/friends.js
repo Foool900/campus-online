@@ -21,14 +21,14 @@ function mapUser(row) {
   return { id: row.id, nickname: row.nickname, avatar: row.avatar, college: row.college };
 }
 
-// GET /api/friends/search?q=&limit= —— 按昵称模糊搜索（排除自己，仅公开字段）
+// GET /api/friends/search?q=&limit= —— 按昵称精确搜索（排除自己，仅公开字段）
 router.get('/friends/search', (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q) return res.json([]);
   const limit = Math.min(Number(req.query.limit) || 20, 50);
   const rows = db
-    .prepare("SELECT id, nickname, avatar, college FROM users WHERE nickname LIKE ? AND id != ? AND role != 'system' ORDER BY id ASC LIMIT ?")
-    .all(`%${q}%`, req.user.id, limit);
+    .prepare("SELECT id, nickname, avatar, college FROM users WHERE nickname = ? AND id != ? AND role != 'system' ORDER BY id ASC LIMIT ?")
+    .all(q, req.user.id, limit);
   res.json(rows.map((r) => ({ ...mapUser(r), friendStatus: friendStatus(req.user.id, r.id) })));
 });
 

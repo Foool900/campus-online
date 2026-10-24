@@ -160,7 +160,7 @@ function CoinGrant() {
   return (
     <div className="admin-mod">
       <div className="admin-row">
-        <input className="admin-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索昵称" />
+        <input className="admin-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="输入完整昵称（精确匹配）" />
         <button className="hud-btn" onClick={search}>搜索</button>
       </div>
       {results.map((u) => (
@@ -202,7 +202,7 @@ function Appoint() {
   return (
     <div className="admin-mod">
       <div className="admin-row">
-        <input className="admin-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索昵称" />
+        <input className="admin-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="输入完整昵称（精确匹配）" />
         <button className="hud-btn" onClick={search}>搜索</button>
       </div>
       {results.map((u) => (

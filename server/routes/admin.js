@@ -21,13 +21,13 @@ const ICON_MAX = 2 * 1024 * 1024;
 // 所有管理端接口均要求 admin 角色（权限再按 requirePermission 细分）
 router.use(requireRole('admin'));
 
-// GET /api/admin/users/search?q= —— 搜索用户（含 role / permissions）
+// GET /api/admin/users/search?q= —— 按昵称精确搜索用户（含 role / permissions，可搜到自己）
 router.get('/admin/users/search', (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q) return res.json([]);
   const rows = db
-    .prepare("SELECT id, nickname, college, avatar, role, permissions FROM users WHERE nickname LIKE ? AND id != ? AND role != 'system' ORDER BY id ASC LIMIT 20")
-    .all(`%${q}%`, req.user.id);
+    .prepare("SELECT id, nickname, college, avatar, role, permissions FROM users WHERE nickname = ? AND role != 'system' ORDER BY id ASC LIMIT 20")
+    .all(q);
   res.json(rows.map((r) => ({ ...r, permissions: getUserPermissions(r) })));
 });
 
