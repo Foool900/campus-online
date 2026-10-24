@@ -28,6 +28,7 @@ function blindboxAmounts(priceNum, cfg) {
 export default function MarketPage() {
   const { user } = useUser();
   const [session, setSession] = useState(null);
+  const [treasury, setTreasury] = useState(0);
   const [serverOffset, setServerOffset] = useState(0);
   const [stalls, setStalls] = useState([]);
   const [items, setItems] = useState([]);
@@ -50,6 +51,7 @@ export default function MarketPage() {
   const load = useCallback(() => {
     api.marketSession().then((r) => {
       setSession(r.session);
+      setTreasury(r.treasury ?? 0);
       setMktConfig(r.config ?? null);
       setServerOffset(new Date(r.serverTime).getTime() - Date.now());
     }).catch((e) => setErr(e.message));
@@ -147,7 +149,7 @@ export default function MarketPage() {
           <span className="tw-sep">|</span>
           <span>[ 剩余: <span className="tw-val">{open ? fmtCountdown(new Date(session.close_at).getTime() - serverNow) : '—'}</span> ]</span>
           <span className="tw-sep">|</span>
-          <span>[ 奖池: <span className="tw-val">{session.treasury ?? 0}</span> 金币 ]</span>
+          <span>[ 奖池: <span className="tw-val">{treasury}</span> 金币 ]</span>
         </div>
       )}
 
