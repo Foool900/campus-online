@@ -799,6 +799,26 @@ export function settleShopTerms(termWeek) {
   return { ok: true };
 }
 
+// 读取店铺竞拍面板：当期 termWeek + 截止 + 每店最高价 / 我的出价（纯只读）
+export function listShops(userId) {
+  const now = new Date(); // 同一 now 贯穿 termWeek/deadline/serverTime，避免毫秒级漂移
+  const { termWeek, deadlineAt } = auctionTerm(now);
+  const shops = db.prepare('SELECT * FROM market_shops ORDER BY sort_order ASC').all();
+  const terms = db.prepare("SELECT * FROM market_shop_terms WHERE status='active'").all();
+  const termMap = new Map(terms.map((t) => [t.shop_id, t]));
+  return {
+    termWeek,
+    deadlineAt,
+    serverTime: now.toISOString(),
+    shops: shops.map((s) => {
+      const highestBid = db.prepare("SELECT COALESCE(MAX(amount_coin), 0) AS v FROM market_shop_bids WHERE shop_id=? AND term_week=? AND status='active'").get(s.id, termWeek).v;
+      const bidCount = db.prepare("SELECT COUNT(*) AS c FROM market_shop_bids WHERE shop_id=? AND term_week=? AND status='active'").get(s.id, termWeek).c;
+      const myRow = db.prepare("SELECT amount_coin FROM market_shop_bids WHERE shop_id=? AND term_week=? AND user_id=? AND status='active'").get(s.id, termWeek, userId);
+      return { ...s, term: termMap.get(s.id) || null, highestBid, bidCount, myBid: myRow ? myRow.amount_coin : null };
+    }),
+  };
+}
+
 // ============================================================
 // 喇叭 / 纠纷 / 秒杀 / 结算
 // ============================================================
@@ -1043,6 +1063,25 @@ export function settleSession(sessionId) {
 // 定时任务（幂等，崩溃重入不重复退款/释放）
 // ============================================================
 
+// 日期 → ISO 周字符串 'YYYY-Www'（周一为一周起点）
+export function isoWeekOf(date) {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const dayNum = d.getUTCDay() || 7; // Mon=1..Sun=7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // 移到本周周四（ISO 年锚点）
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+// 当前可竞拍的期次 = 下一个（严格未来的）周一 00:00 UTC 所在周
+export function auctionTerm(now = new Date()) {
+  const day = now.getUTCDay() || 7; // Mon=1..Sun=7
+  const daysUntilMonday = (8 - day) % 7; // 0 表示今天就是周一
+  const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilMonday));
+  if (monday.getTime() <= now.getTime()) monday.setUTCDate(monday.getUTCDate() + 7); // 周一 00:00 整/已过 → 推到下一周
+  return { termWeek: isoWeekOf(monday), deadlineAt: monday.toISOString() };
+}
+
 // ISO 周字符串 'YYYY-Www' → 该周周一 00:00（UTC）ISO 时间
 function termWeekStartIso(termWeek) {
   const m = String(termWeek).match(/^(\d{4})-W(\d{2})$/);
@@ -1176,10 +1215,7 @@ router.get('/market/bargains/mine', requireRole('student', 'admin'), (req, res) 
 });
 
 router.get('/market/shops', (req, res) => {
-  const shops = db.prepare('SELECT * FROM market_shops ORDER BY sort_order ASC').all();
-  const terms = db.prepare("SELECT * FROM market_shop_terms WHERE status='active'").all();
-  const termMap = new Map(terms.map((t) => [t.shop_id, t]));
-  res.json(shops.map((s) => ({ ...s, term: termMap.get(s.id) || null })));
+  res.json(listShops(req.user.id));
 });
 
 router.post('/market/sessions', requireRole('admin'), (req, res) => {
