@@ -160,3 +160,22 @@ test('g: 重复举报同一对象（report_key 冲突）不消耗月计数', () 
   assert.equal(dup.status, 409); // report_key 冲突
   assert.equal(countFor(u), 1); // 计数不增加
 });
+
+test('h: createItem 敏感词覆盖 contentJson（对象/字符串/JSON，url 不误伤）', () => {
+  const sid = openSession();
+  const seller = makeUser(1000);
+
+  // a. 对象含违规词
+  const a = createItem(seller, { sessionId: sid, title: '盲盒', priceCoin: 10, type: 'blindbox', contentJson: { text: '刷单' } });
+  assert.equal(a.code, 'SENSITIVE_CONTENT'); assert.equal(a.status, 400);
+  // b. 纯文本字符串含违规词（parse 失败回退整体查）
+  const b = createItem(seller, { sessionId: sid, title: '盲盒', priceCoin: 10, type: 'blindbox', contentJson: '刷单' });
+  assert.equal(b.code, 'SENSITIVE_CONTENT'); assert.equal(b.status, 400);
+  // c. JSON 字符串含违规词（parse 成功查 .text）
+  const c = createItem(seller, { sessionId: sid, title: '盲盒', priceCoin: 10, type: 'blindbox', contentJson: '{"text":"刷单"}' });
+  assert.equal(c.code, 'SENSITIVE_CONTENT'); assert.equal(c.status, 400);
+  // d. url 不误伤（只查 .text，url 里的「加微信」不触发）
+  assert.equal(createItem(seller, { sessionId: sid, title: '盲盒', priceCoin: 10, type: 'blindbox', contentJson: { text: '正常内容', url: 'xxx加微信.png' } }).error, undefined);
+  // e. null 正常通过
+  assert.equal(createItem(seller, { sessionId: sid, title: '盲盒', priceCoin: 10, type: 'blindbox', contentJson: null }).error, undefined);
+});

@@ -248,9 +248,27 @@ export function releaseStall(userId, stallId) {
 // 商品
 // ============================================================
 
+// contentJson 敏感词：字符串先 parse，对象只查 .text（跳过 url 等非文本字段）
+function contentJsonHasSensitive(cj) {
+  if (cj == null) return false;
+  if (typeof cj === 'string') {
+    let parsed = null;
+    try { parsed = JSON.parse(cj); } catch { /* 非 JSON */ }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return typeof parsed.text === 'string' && containsSensitiveWord(parsed.text);
+    }
+    return containsSensitiveWord(cj);
+  }
+  if (typeof cj === 'object' && !Array.isArray(cj)) {
+    return typeof cj.text === 'string' && containsSensitiveWord(cj.text);
+  }
+  return false;
+}
+
 /**
  * 上架商品（draft）。盲盒的 contentJson 描述盒内内容：接受 `{ text }` 对象或 JSON 字符串，
- * 缺省/空串 → 惊喜盲盒；入库前统一序列化为 JSON 字符串。
+ * 缺省/空串 → 惊喜盲盒；入库前统一序列化为 JSON 字符串。对象格式约定为 `{ text: string }`，
+ * 其它字段不保证被处理（也不参与敏感词校验）。
  */
 export function createItem(userId, { sessionId, title, description, priceCoin, type = 'normal', stock = 1, contentJson = null }) {
   const sys = assertNotSystem(userId);
@@ -265,7 +283,7 @@ export function createItem(userId, { sessionId, title, description, priceCoin, t
   if (!Number.isInteger(stock) || stock <= 0) return { error: '库存必须为正整数', status: 400 };
   if (!['normal', 'blindbox', 'flash_sale'].includes(type)) return { error: '商品类型无效', status: 400 };
   if (type === 'blindbox' && stock !== 1) return { error: '盲盒库存必须为 1', status: 400 };
-  if (containsSensitiveWord(t) || containsSensitiveWord((description || '').toString())) {
+  if (containsSensitiveWord(t) || containsSensitiveWord((description || '').toString()) || contentJsonHasSensitive(contentJson)) {
     return { error: '内容包含违规词，请修改', code: 'SENSITIVE_CONTENT', status: 400 };
   }
 
