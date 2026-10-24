@@ -5,6 +5,7 @@ import { requireRole } from '../auth.js';
 import { config } from '../config.js';
 import { applyCoinRaw } from '../coin.js';
 import { systemAccountId } from '../treasury.js';
+import { containsSensitiveWord } from '../utils/sensitive-words.js';
 
 const router = Router();
 
@@ -258,6 +259,9 @@ export function createItem(userId, { sessionId, title, description, priceCoin, t
   if (t.length > 60) return { error: '标题过长（最多 60 字）', status: 400 };
   if (!Number.isInteger(price) || price <= 0) return { error: '价格必须为正整数金币', status: 400 };
   if (!['normal', 'blindbox', 'flash_sale'].includes(type)) return { error: '商品类型无效', status: 400 };
+  if (containsSensitiveWord(t) || containsSensitiveWord((description || '').toString())) {
+    return { error: '内容包含违规词，请修改', code: 'SENSITIVE_CONTENT', status: 400 };
+  }
 
   const key = `item:${sessionId}:${userId}:${randomBytes(8).toString('hex')}`;
   const r = runTx(() => {
@@ -777,6 +781,7 @@ export function broadcast(userId, sessionId, content, stallId = null) {
   assertOpen(session);
   const text = (content || '').toString().trim();
   if (!text || text.length > 100) return { error: '喇叭内容需为 1-100 字', status: 400 };
+  if (containsSensitiveWord(text)) return { error: '内容包含违规词，请修改', code: 'SENSITIVE_CONTENT', status: 400 };
 
   const seq = db.prepare('SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM market_broadcasts WHERE session_id=? AND user_id=?').get(sessionId, userId).n;
   if (seq > cfg('broadcastPerUserPerSession')) return { error: '本期喇叭已达上限', status: 409 };
@@ -799,16 +804,48 @@ export function broadcast(userId, sessionId, content, stallId = null) {
 }
 
 export function createDispute(reporterId, { orderId = null, itemId = null, type = 'report', reason, evidenceJson = null }) {
-  if (!reason || !(reason || '').toString().trim()) return { error: '请填写举报原因', status: 400 };
-  const reportKey = orderId ? `order:${orderId}:${reporterId}` : `item:${itemId}:${reporterId}`;
-  try {
-    db.prepare("INSERT INTO market_disputes (order_id, item_id, reporter_id, report_key, type, reason, evidence_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
-      .run(orderId, itemId, reporterId, reportKey, type, reason.trim(), evidenceJson, nowIso());
-    return { ok: true };
-  } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return { error: '你已举报过该对象', status: 409 };
-    throw e;
+  const rtext = (reason || '').toString().trim();
+  if (!rtext) return { error: '请填写举报原因', status: 400 };
+  if (containsSensitiveWord(rtext)) return { error: '内容包含违规词，请修改', code: 'SENSITIVE_CONTENT', status: 400 };
+  if (typeof evidenceJson === 'string' && containsSensitiveWord(evidenceJson)) return { error: '内容包含违规词，请修改', code: 'SENSITIVE_CONTENT', status: 400 };
+
+  // 盲盒 24h 窗口（仅 type='blindbox' 订单）
+  if (orderId) {
+    const order = db.prepare('SELECT type FROM market_orders WHERE id=?').get(orderId);
+    if (order && order.type === 'blindbox') {
+      const open = db.prepare('SELECT opened_at FROM market_blindbox_opens WHERE order_id=?').get(orderId);
+      if (open) {
+        const deadline = new Date(new Date(open.opened_at).getTime() + cfg('blindboxHoldHours') * 3600000);
+        if (deadline.getTime() < Date.now()) {
+          return { error: '盲盒举报已超过开盒后 24 小时', code: 'REPORT_WINDOW_EXPIRED', status: 400 };
+        }
+      }
+    }
   }
+
+  const reportKey = orderId ? `order:${orderId}:${reporterId}` : `item:${itemId}:${reporterId}`;
+  // month_key 用服务端 UTC 时间，防改时区跨月重置
+  const nowD = new Date();
+  const monthKey = `${nowD.getUTCFullYear()}-${String(nowD.getUTCMonth() + 1).padStart(2, '0')}`;
+
+  const r = runTx(() => {
+    // 1. 先 INSERT dispute（report_key UNIQUE 拦截重复 → 409，counter 不增加）
+    try {
+      db.prepare("INSERT INTO market_disputes (order_id, item_id, reporter_id, report_key, type, reason, evidence_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
+        .run(orderId, itemId, reporterId, reportKey, type, rtext, evidenceJson, nowIso());
+    } catch (e) {
+      if (String(e.message).includes('UNIQUE')) throwBiz('REPORTED', '你已举报过该对象', 409);
+      throw e;
+    }
+    // 2. counter upsert（先 dispute 后 counter）
+    db.prepare('INSERT INTO report_counters (user_id, month_key, count) VALUES (?, ?, 1) ON CONFLICT(user_id, month_key) DO UPDATE SET count = count + 1').run(reporterId, monthKey);
+    // 3. 达 limit 整体回滚（dispute 也回滚）→ 429
+    const c = db.prepare('SELECT count FROM report_counters WHERE user_id=? AND month_key=?').get(reporterId, monthKey).count;
+    if (c > cfg('reportMonthlyLimit')) throwBiz('REPORT_LIMIT_EXCEEDED', '本月举报次数已达上限', 429);
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
 }
 
 export function resolveDispute(adminId, disputeId, outcome) {

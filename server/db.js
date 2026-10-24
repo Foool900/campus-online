@@ -620,6 +620,15 @@ export function initDb() {
       FOREIGN KEY (reporter_id) REFERENCES users(id)         ON DELETE CASCADE
     );
 
+    -- 举报计数（按月，YYYY-MM UTC；UNIQUE(user_id, month_key)）
+    CREATE TABLE IF NOT EXISTS report_counters (
+      user_id   INTEGER NOT NULL,
+      month_key TEXT    NOT NULL,
+      count     INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, month_key),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     -- 运行时配置（押金/喇叭费/秒杀预算/举报月限/手续费率）
     CREATE TABLE IF NOT EXISTS market_configs (
       key        TEXT PRIMARY KEY,
