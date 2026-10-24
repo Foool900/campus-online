@@ -4,7 +4,7 @@ import { db, nowIso } from '../db.js';
 import { requireRole } from '../auth.js';
 import { config } from '../config.js';
 import { applyCoinRaw } from '../coin.js';
-import { treasuryBalance, addTreasury, spendTreasury, systemAccountId } from '../treasury.js';
+import { treasuryBalance, systemAccountId } from '../treasury.js';
 
 const router = Router();
 
@@ -727,15 +727,23 @@ export function settleShopTerms(termWeek) {
       const term = db.prepare('SELECT * FROM market_shop_terms WHERE shop_id=? AND term_week=?').get(shop.id, termWeek);
       if (winner && !term) {
         db.prepare("INSERT INTO market_shop_terms (shop_id, term_week, owner_id, rent_coin, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)").run(shop.id, termWeek, winner.user_id, winner.amount_coin, nowIso());
-        // 中标：冻结全额作为租金（50% treasury / 50% sink）
+        // 中标：冻结全额作为租金，50% transfer 给 SYSTEM，50% sink 销毁（顺序固定）
         const treasuryPart = Math.floor(winner.frozen_total_coin * cfg('stallFeeTreasuryRatio'));
         const sinkPart = winner.frozen_total_coin - treasuryPart;
-        // 释放中标冻结（转成租金消耗）
-        const rf = applyCoinRaw({ fromUserId: winner.user_id, amount: winner.frozen_total_coin, type: 'refund', relatedType: 'market_shop_rent', relatedId: shop.id, idempotencyKey: `shop_rent:${shop.id}:${termWeek}:${winner.user_id}:unfreeze` });
-        if (rf.error) throwBiz(rf.code, rf.error, rf.status);
-        if (sinkPart > 0) applyCoinRaw({ fromUserId: winner.user_id, amount: sinkPart, type: 'sink', relatedType: 'market_shop_rent', relatedId: shop.id, idempotencyKey: `shop_rent:${shop.id}:${termWeek}:${winner.user_id}:sink` });
-        if (treasuryPart > 0) addTreasury(treasuryPart);
-        writeLedger({ sessionId: null, bizType: 'shop_rent', bizId: shop.id, op: 'charge', userId: winner.user_id, amount: winner.frozen_total_coin, idempotencyKey: `shop_rent:${shop.id}:${termWeek}:ledger` });
+        if (treasuryPart > 0) {
+          const sysId = systemAccountId();
+          const tKey = `shop_rent_treasury:${shop.id}:${termWeek}`;
+          const t = applyCoinRaw({ fromUserId: winner.user_id, toUserId: sysId, amount: treasuryPart, type: 'transfer', relatedType: 'market_shop_rent', relatedId: shop.id, idempotencyKey: tKey });
+          if (t.error) throwBiz(t.code, t.error, t.status);
+          writeLedger({ sessionId: null, bizType: 'shop_rent_treasury', bizId: shop.id, op: 'treasury_in', userId: winner.user_id, counterpartyId: sysId, amount: treasuryPart, coinTxId: t.txId, idempotencyKey: `${tKey}:ledger` });
+        }
+        if (sinkPart > 0) {
+          const rf = applyCoinRaw({ fromUserId: winner.user_id, amount: sinkPart, type: 'refund', relatedType: 'market_shop_rent', relatedId: shop.id, idempotencyKey: `shop_rent:${shop.id}:${termWeek}:${winner.user_id}:unfreeze` });
+          if (rf.error) throwBiz(rf.code, rf.error, rf.status);
+          const sk = applyCoinRaw({ fromUserId: winner.user_id, amount: sinkPart, type: 'sink', relatedType: 'market_shop_rent', relatedId: shop.id, idempotencyKey: `shop_rent:${shop.id}:${termWeek}:${winner.user_id}:sink` });
+          if (sk.error) throwBiz(sk.code, sk.error, sk.status);
+          writeLedger({ sessionId: null, bizType: 'shop_rent_sink', bizId: shop.id, op: 'sink', userId: winner.user_id, amount: sinkPart, coinTxId: sk.txId, idempotencyKey: `shop_rent:${shop.id}:${termWeek}:${winner.user_id}:sink:ledger` });
+        }
         db.prepare("UPDATE market_shop_bids SET status='won' WHERE id=?").run(winner.id);
       }
       // 未中标：全额退款
@@ -772,10 +780,10 @@ export function broadcast(userId, sessionId, content, stallId = null) {
   const key = `broadcast:${sessionId}:${userId}:${seq}`;
   const r = runTx(() => {
     if (fee > 0) {
-      const coin = applyCoinRaw({ fromUserId: userId, amount: fee, type: 'sink', relatedType: 'market_broadcast', relatedId: sessionId, idempotencyKey: key });
-      if (coin.error) throwBiz(coin.code, coin.error, coin.status);
-      addTreasury(fee);
-      writeLedger({ sessionId, bizType: 'broadcast_fee', bizId: null, op: 'treasury_in', userId, amount: fee, idempotencyKey: `${key}:ledger` });
+      const sysId = systemAccountId();
+      const p = applyCoinRaw({ fromUserId: userId, toUserId: sysId, amount: fee, type: 'pay', relatedType: 'market_broadcast', relatedId: sessionId, idempotencyKey: key });
+      if (p.error) throwBiz(p.code, p.error, p.status);
+      writeLedger({ sessionId, bizType: 'broadcast_fee', bizId: null, op: 'treasury_in', userId, counterpartyId: sysId, amount: fee, coinTxId: p.txId, idempotencyKey: `${key}:ledger` });
     }
     db.prepare("INSERT INTO market_broadcasts (session_id, user_id, seq, stall_id, content, fee_coin, status, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, 'published', ?, ?)")
       .run(sessionId, userId, seq, stallId, text, fee, key, nowIso());
