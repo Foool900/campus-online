@@ -1184,13 +1184,13 @@ router.get('/market/shops', (req, res) => {
 
 router.post('/market/sessions', requireRole('admin'), (req, res) => {
   const r = createSession(req.body?.openAt);
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.status(201).json(r.session);
 });
 
 router.post('/market/stalls/signup', requireRole('student', 'admin'), (req, res) => {
   const r = signupStall(req.user.id, Number(req.body?.sessionId));
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
@@ -1208,7 +1208,7 @@ router.post('/market/stalls/:id/confirm', requireRole('student', 'admin'), (req,
 
 router.post('/market/stalls/:id/release', requireRole('student', 'admin'), (req, res) => {
   const r = releaseStall(req.user.id, Number(req.params.id));
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
@@ -1220,19 +1220,19 @@ router.get('/market/items', (req, res) => {
 
 router.post('/market/items', requireRole('student', 'admin'), (req, res) => {
   const r = createItem(req.user.id, req.body || {});
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.status(201).json({ itemId: r.itemId });
 });
 
 router.post('/market/items/:id/list', requireRole('student', 'admin'), (req, res) => {
   const r = listItem(req.user.id, Number(req.params.id), req.body || {});
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/items/:id/remove', requireRole('student', 'admin'), (req, res) => {
   const r = removeItem(req.user.id, Number(req.params.id));
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
@@ -1256,73 +1256,73 @@ router.post('/market/bargains/:id/accept', requireRole('student', 'admin'), (req
 
 router.post('/market/bargains/:id/reject', requireRole('student', 'admin'), (req, res) => {
   const r = rejectBargain(req.user.id, Number(req.params.id));
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/orders/:id/pay', requireRole('student', 'admin'), (req, res) => {
   const r = payOrder(req.user.id, Number(req.params.id));
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/orders/:id/deliver', requireRole('student', 'admin'), (req, res) => {
   const r = deliverOrder(req.user.id, Number(req.params.id));
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/orders/:id/confirm', requireRole('student', 'admin'), (req, res) => {
   const r = confirmOrder(req.user.id, Number(req.params.id));
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/orders/:id/cancel', requireRole('student', 'admin'), (req, res) => {
   const r = cancelOrder(req.user.id, Number(req.params.id));
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/orders/:id/open', requireRole('student', 'admin'), (req, res) => {
   const r = openBlindbox(req.user.id, Number(req.params.id));
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/orders/:id/rate', requireRole('student', 'admin'), (req, res) => {
   const r = rateOrder(req.user.id, Number(req.params.id), req.body.rating);
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/disputes', requireRole('student', 'admin'), (req, res) => {
   const r = createDispute(req.user.id, req.body || {});
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.status(201).json(r);
 });
 
 router.post('/market/disputes/:id/resolve', requireRole('admin'), (req, res) => {
   const r = resolveDispute(req.user.id, Number(req.params.id), req.body?.outcome);
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/broadcasts', requireRole('student', 'admin'), (req, res) => {
   const r = broadcast(req.user.id, Number(req.body?.sessionId), req.body?.content, req.body?.stallId);
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.status(201).json(r);
 });
 
 router.post('/market/shops/:id/bids', requireRole('student', 'admin'), (req, res) => {
   const r = bidShop(req.user.id, Number(req.params.id), req.body?.termWeek, req.body?.amountCoin);
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
 });
 
 router.post('/market/flash', requireRole('admin'), (req, res) => {
   const r = createFlashSale(req.user.id, req.body || {});
-  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.status(201).json(r);
 });
 

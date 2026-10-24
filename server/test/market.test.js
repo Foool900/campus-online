@@ -100,3 +100,19 @@ test('购买自己的商品被拒绝', () => {
   const r = buyItem(seller, itemId);
   assert.equal(r.status, 400);
 });
+
+test('盲盒上架保证金不足：listItem 返回 code=COIN_INSUFFICIENT', () => {
+  const sid = openSession();
+  const seller = makeUser(10); // 抢摊冻结押金 5 后，可冻结余额剩 5
+  const stallId = occupiedStall(seller, sid);
+  assert.equal(acct(seller).coin, 5);
+
+  const c = createItem(seller, { sessionId: sid, title: '盲盒', priceCoin: 10, type: 'blindbox' });
+  assert.equal(c.error, undefined);
+
+  // 保证金 = floor(10 * 0.8) = 8 > 5，冻结失败
+  const l = listItem(seller, c.itemId, { stallId });
+  assert.equal(l.error, '金币不足');
+  assert.equal(l.code, 'COIN_INSUFFICIENT');
+  assert.equal(l.status, 400);
+});
