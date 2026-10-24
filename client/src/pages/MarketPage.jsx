@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
 import MarketBargainInbox from '../components/MarketBargainInbox.jsx';
+import MarketShopAuction from '../components/MarketShopAuction.jsx';
 
 const TYPE_LABELS = { normal: '普通', blindbox: '盲盒', flash_sale: '秒杀' };
 const STALL_STATUS = { available: '空', reserved: '预留', occupied: '营业', released: '已撤', expired: '到期' };
@@ -171,6 +172,9 @@ export default function MarketPage() {
           </div>
         </div>
       )}
+
+      {/* 店铺竞拍（每周，独立于开市） */}
+      <MarketShopAuction />
 
       {/* 上架表单 */}
       {myStall?.status === 'occupied' && open && (

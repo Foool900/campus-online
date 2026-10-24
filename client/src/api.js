@@ -173,6 +173,7 @@ export const api = {
   signinClaim: () => request('/api/signin', { method: 'POST' }),
   marketSession: () => request('/api/market/session'),
   marketShops: () => request('/api/market/shops'),
+  marketShopBid: (id, body) => request(`/api/market/shops/${id}/bids`, { method: 'POST', body: JSON.stringify(body) }),
   marketStalls: (sessionId) => request(`/api/market/stalls?sessionId=${encodeURIComponent(sessionId || '')}`),
   marketItems: (sessionId) => request(`/api/market/items?sessionId=${encodeURIComponent(sessionId || '')}`),
   marketMyOrders: () => request('/api/market/orders/mine'),
