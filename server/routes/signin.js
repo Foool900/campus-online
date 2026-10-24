@@ -88,7 +88,11 @@ router.post('/signin', (req, res) => {
   try {
     res.json(claimSignin(req.user.id));
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message || '签到失败' });
+    // 只透传 4xx 业务错误（含 code）；未知错误交给全局 errorHandler 兜底 500，不泄露内部信息
+    if (e && Number.isInteger(e.status) && e.status >= 400 && e.status < 500) {
+      return res.status(e.status).json({ error: e.message || '签到失败', ...(e.code ? { code: e.code } : {}) });
+    }
+    throw e;
   }
 });
 
