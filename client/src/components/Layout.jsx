@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api.js';
 import { socket } from '../socket.js';
 import { useUser } from '../UserContext.jsx';
+import { useAchievementToast } from './AchievementToast.jsx';
 import MapEngine from './MapEngine.jsx';
 import AreaDialog from './AreaDialog.jsx';
 import HudOverlay from './HudOverlay.jsx';
@@ -66,6 +67,7 @@ function tryLockLandscape() {
 export default function Layout({ children }) {
   const { user } = useUser();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // 手机适配：默认横屏 HUD；横 / 竖屏布局由小地图按钮手动切换（不改变物理旋转）
   const isMobile = useIsMobile();
@@ -104,18 +106,12 @@ export default function Layout({ children }) {
     toastTimer.current = setTimeout(() => setToast(null), 2400);
   };
 
-  // 成就解锁 Toast（socket 推送）
-  const [achToast, setAchToast] = useState(null);
-  const achTimer = useRef(null);
+  // 成就解锁 Toast（socket 推送 → 全局 AchievementToast）
+  const showAchievement = useAchievementToast();
   useEffect(() => {
-    const onAch = (a) => {
-      setAchToast(a);
-      clearTimeout(achTimer.current);
-      achTimer.current = setTimeout(() => setAchToast(null), 4200);
-    };
-    socket.on('achievement:unlocked', onAch);
-    return () => socket.off('achievement:unlocked', onAch);
-  }, []);
+    socket.on('achievement:unlocked', showAchievement);
+    return () => socket.off('achievement:unlocked', showAchievement);
+  }, [showAchievement]);
 
   // EXP_015 摸鱼先锋：60 分钟无交互（每天最多触发一次）
   useEffect(() => {
@@ -139,6 +135,14 @@ export default function Layout({ children }) {
       events.forEach((e) => window.removeEventListener(e, reset));
     };
   }, [user?.id]);
+
+  // 记录界面打开次数（供 page_opens 进度型成就统计，地图首页不计）
+  useEffect(() => {
+    if (!user) return;
+    const page = location.pathname;
+    if (!page || page === '/') return;
+    api.trackPageOpen(page).catch(() => {});
+  }, [location.pathname, user?.id]);
 
   useEffect(() => {
     api
@@ -204,7 +208,7 @@ export default function Layout({ children }) {
           onSettings={() => navigate('/settings')}
           onProfile={() => navigate('/profile')}
           onLeaderboard={() => navigate('/leaderboard')}
-          onAchievements={() => navigate('/achievements')}
+          onAchievements={() => navigate('/profile?tab=achievements')}
         />
       ) : (
         <>
@@ -213,7 +217,7 @@ export default function Layout({ children }) {
           <TopRight
             user={user}
             onProfile={() => navigate('/profile')}
-            onAchievements={() => navigate('/achievements')}
+            onAchievements={() => navigate('/profile?tab=achievements')}
             onLeaderboard={() => navigate('/leaderboard')}
             onFriends={() => navigate('/co-online')}
           />
@@ -253,16 +257,6 @@ export default function Layout({ children }) {
 
       {/* Toast / 错误 */}
       {toast && <div className="toast">{toast}</div>}
-      {achToast && (
-        <div className="ach-toast">
-          <div className="ach-toast-icon">{achToast.icon || '🏅'}</div>
-          <div className="ach-toast-body">
-            <div className="ach-toast-head">ACHIEVEMENT UNLOCKED</div>
-            <div className="ach-toast-name">{achToast.name}</div>
-            <div className="ach-toast-desc">{achToast.description}</div>
-          </div>
-        </div>
-      )}
       {error && (
         <div className="toast" style={{ background: 'rgba(120, 22, 22, 0.94)' }}>
           {error}

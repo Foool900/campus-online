@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, nowIso } from '../db.js';
 import { onlineCount } from '../presence.js';
 import { requireRole } from '../auth.js';
+import { notifyNewProgressAchievements } from '../achievements.js';
 
 const router = Router();
 
@@ -204,6 +205,8 @@ router.post('/channels/:channelId/posts', requireRole('student', 'admin'), (req,
     .run(channelId, uid, t, body, cat, 'open', nowIso());
 
   const post = db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(info.lastInsertRowid);
+  // 发布活动帖可能让 posts_created 进度型成就跨过阈值 → 检测并弹窗
+  notifyNewProgressAchievements(uid, req.app.get('io'));
   res.status(201).json(post);
 });
 

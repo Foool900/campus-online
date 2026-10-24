@@ -82,7 +82,7 @@ export function requireRole(...roles) {
 }
 
 // 权限项（RBAC）
-export const PERMISSIONS = ['COIN_ADD', 'COIN_MINUS', 'USER_MANAGE', 'ADMIN_GRANT'];
+export const PERMISSIONS = ['COIN_ADD', 'COIN_MINUS', 'USER_MANAGE', 'ADMIN_GRANT', 'ACHIEVEMENT_MANAGE'];
 
 export function getUserPermissions(user) {
   try {

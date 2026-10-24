@@ -83,7 +83,6 @@ export const api = {
   campuses: () => request('/api/campuses'),
   areas: (campusId) =>
     request('/api/areas' + (campusId ? `?campusId=${encodeURIComponent(campusId)}` : '')),
-  moveArea: (id, body) => request(`/api/areas/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   channels: (areaId) => request(`/api/areas/${areaId}/channels`),
   messages: (channelId) => request(`/api/channels/${channelId}/messages`),
   sendMessage: (channelId, body) =>
@@ -197,19 +196,48 @@ export const api = {
   marketOpenBlindbox: (id) => request(`/api/market/orders/${id}/open`, { method: 'POST' }),
   marketDisputes: () => request('/api/market/disputes/mine'),
   marketDispute: (body) => request('/api/market/disputes', { method: 'POST', body: JSON.stringify(body) }),
+  // 夜市管理（仅 admin）
+  marketAdminDisputes: (status) =>
+    request('/api/market/disputes' + (status ? `?status=${encodeURIComponent(status)}` : '')),
+  marketResolveDispute: (id, outcome) =>
+    request(`/api/market/disputes/${id}/resolve`, { method: 'POST', body: JSON.stringify({ outcome }) }),
+  marketCreateSession: (body) => request('/api/market/sessions', { method: 'POST', body: JSON.stringify(body) }),
+  marketFlash: (body) => request('/api/market/flash', { method: 'POST', body: JSON.stringify(body) }),
   lotteryInfo: () => request('/api/lottery'),
   lotteryDraw: () => request('/api/lottery/draw', { method: 'POST' }),
   adminSearchUsers: (q) => request(`/api/admin/users/search?q=${encodeURIComponent(q)}`),
   adminGrantCoin: (id, body) => request(`/api/admin/user/${id}/coin`, { method: 'PATCH', body: JSON.stringify(body) }),
   adminSetPermissions: (id, body) => request(`/api/admin/user/${id}/permissions`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminAchievements: () => request('/api/admin/achievements'),
+  adminCreateAchievement: (body) => request('/api/admin/achievements', { method: 'POST', body: JSON.stringify(body) }),
+  adminUpdateAchievement: (code, body) => request(`/api/admin/achievements/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminDeleteAchievement: (code) => request(`/api/admin/achievements/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+  adminUploadAchievementIcon: async (file) => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
+    const headers = { 'Content-Type': file.type };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch('/api/admin/achievements/icon', { method: 'POST', headers, body: file });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      const err = new Error(data?.error || `上传失败（HTTP ${res.status}）`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
   user: (id) => request(`/api/users/${id}`),
   leaderboard: () => request('/api/leaderboard'),
   createUser: (body) => request('/api/users', { method: 'POST', body: JSON.stringify(body) }),
   updateUser: (id, body) =>
     request(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  achievements: (userId) => request(`/api/achievements?userId=${encodeURIComponent(userId)}`),
-  userAchievements: () => request('/api/user/achievements'),
-  triggerAchievement: (code) => request('/api/user/achievements/trigger', { method: 'POST', body: JSON.stringify({ code }) }),
+  achievements: () => request('/api/achievements'),
+  triggerAchievement: (code) => request('/api/achievements/trigger', { method: 'POST', body: JSON.stringify({ code }) }),
+  trackPageOpen: (page) => request('/api/achievements/page-open', { method: 'POST', body: JSON.stringify({ page }) }),
   world: () => request('/api/world'),
 };
 

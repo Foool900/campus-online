@@ -28,7 +28,7 @@ import friendsRouter from './routes/friends.js';
 import conversationsRouter from './routes/conversations.js';
 import adminRouter from './routes/admin.js';
 import { requireAuth, getSessionUser } from './auth.js';
-import { triggerAchievement } from './achievements.js';
+import { triggerAchievement, notifyNewProgressAchievements } from './achievements.js';
 import errorHandler from './error-handler.js';
 
 // 初始化数据库表结构与种子数据（仅在空库时写入）
@@ -40,7 +40,7 @@ ensureAchievements();
 ensureMarketShops();
 ensureSystemAccount();
 if (seeded) {
-  console.log('[db] 已写入种子数据：2 个校区 / 区域与频道 / 示例消息与帖子 / 成就');
+  console.log('[db] 已写入种子数据：2 个校区 / 区域与频道 / 示例消息与帖子');
 }
 
 const app = express();
@@ -282,6 +282,9 @@ io.on('connection', (socket) => {
       const stickerCount = db.prepare('SELECT COUNT(*) AS c FROM stickers WHERE user_id = ?').get(userId).c;
       if (stickerCount >= 50) unlock('EXP_013');
     }
+
+    // 发消息可能让 messages_sent / areas_visited 等进度型成就跨过阈值 → 检测并弹窗
+    notifyNewProgressAchievements(userId, io);
 
     if (typeof ack === 'function') ack({ ok: true, message: result.message });
   });

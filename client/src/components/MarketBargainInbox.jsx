@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
+import { BellIcon } from './MarketIcons.jsx';
 
 function formatTime(iso) {
   if (!iso) return '';
@@ -12,31 +13,16 @@ function formatTime(iso) {
   return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
 }
 
-// 卖家砍价收件箱：列出自己商品的 pending 砍价，接受（两步确认）/ 拒绝
-export default function MarketBargainInbox({ open, sessionId, onChanged }) {
+// 卖家砍价收件箱：列出自己商品的 pending 砍价，接受（两步确认）/ 拒绝。
+// 受控组件：bargains 由 useMarketData 传入（null = 加载中），不再自行拉取。
+export default function MarketBargainInbox({ bargains, open, onChanged }) {
   const { user } = useUser();
   const isStudent = user && (user.role === 'student' || user.role === 'admin');
 
-  const [bargains, setBargains] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
-  const [busyId, setBusyId] = useState(null); // 接受/拒绝进行中的砍价 id，防双击
-  const [confirmId, setConfirmId] = useState(null); // 处于「确认接受」两步态的那条
-
-  const load = useCallback(() => {
-    setLoading(true);
-    setErr('');
-    api.marketBargains()
-      .then(setBargains)
-      .catch((e) => setErr(e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (!open || !isStudent) return;
-    load();
-  }, [open, sessionId, isStudent, load]);
+  const [busyId, setBusyId] = useState(null);       // 接受/拒绝进行中的砍价 id，防双击
+  const [confirmId, setConfirmId] = useState(null);  // 处于「确认接受」两步态的那条
 
   // 成功提示 3 秒自动清除，避免常驻
   useEffect(() => {
@@ -55,7 +41,6 @@ export default function MarketBargainInbox({ open, sessionId, onChanged }) {
       const r = await api.marketAcceptBargain(b.id);
       setMsg(`已接受，生成订单 #${r.orderId}`);
       onChanged && onChanged();
-      load();
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -70,7 +55,7 @@ export default function MarketBargainInbox({ open, sessionId, onChanged }) {
     try {
       await api.marketRejectBargain(b.id);
       setMsg('已拒绝，金币已退回买家');
-      load();
+      onChanged && onChanged();
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -80,10 +65,10 @@ export default function MarketBargainInbox({ open, sessionId, onChanged }) {
 
   return (
     <>
-      <div className="tabs" style={{ margin: '12px 0 10px' }}><span style={{ fontWeight: 600 }}>🔔 待处理砍价</span></div>
+      <div className="tabs" style={{ margin: '12px 0 10px' }}><span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><BellIcon size={14} /> 待处理砍价</span></div>
       {err && <div className="form-error">{err}</div>}
       {msg && <div className="form-success">{msg}</div>}
-      {loading ? (
+      {bargains === null ? (
         <div className="empty-state">&gt; 加载中...</div>
       ) : bargains.length === 0 ? (
         <div className="empty-state">&gt; 无待处理砍价</div>
@@ -95,9 +80,9 @@ export default function MarketBargainInbox({ open, sessionId, onChanged }) {
             <div key={b.id} className="card" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <span style={{ fontWeight: 600 }}>{b.itemTitle}</span>
-                <span className="post-category" style={{ marginLeft: 8 }}>标价 🪙{b.itemPrice}</span>
+                <span className="post-category" style={{ marginLeft: 8 }}>标价 {b.itemPrice} 金币</span>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  {b.buyerName} 出价 🪙{b.offerCoin}（第 {b.attemptNo} 次）· {formatTime(b.createdAt)}
+                  {b.buyerName} 出价 {b.offerCoin} 金币（第 {b.attemptNo} 次）· {formatTime(b.createdAt)}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

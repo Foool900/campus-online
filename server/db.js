@@ -228,7 +228,10 @@ export function initDb() {
       description TEXT    NOT NULL,
       icon        TEXT    NOT NULL DEFAULT '🏅',
       metric      TEXT    NOT NULL,
-      threshold   INTEGER NOT NULL
+      threshold   INTEGER NOT NULL,
+      kind        TEXT    NOT NULL DEFAULT 'progress',
+      condition_visible INTEGER NOT NULL DEFAULT 1,
+      page        TEXT    NOT NULL DEFAULT ''
     );
 
     -- 触发式成就解锁记录（幂等：同用户同成就只一条）
@@ -237,6 +240,15 @@ export function initDb() {
       achievement_code TEXT    NOT NULL,
       unlocked_at      TEXT    NOT NULL,
       PRIMARY KEY (user_id, achievement_code),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- 界面打开次数（供 page_opens 进度型成就统计）
+    CREATE TABLE IF NOT EXISTS page_opens (
+      user_id INTEGER NOT NULL,
+      page    TEXT    NOT NULL,
+      count   INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, page),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
@@ -726,6 +738,19 @@ export function initDb() {
   }
   if (!achCols.includes('hint')) {
     db.exec("ALTER TABLE achievements ADD COLUMN hint TEXT NOT NULL DEFAULT '';");
+  }
+  // 迁移：achievements 补 kind（进度型 / 触发型），替代 metric='trigger' 哨兵
+  if (!achCols.includes('kind')) {
+    db.exec("ALTER TABLE achievements ADD COLUMN kind TEXT NOT NULL DEFAULT 'progress';");
+    db.exec("UPDATE achievements SET kind = 'trigger' WHERE metric = 'trigger';");
+  }
+  // 迁移：achievements 补 condition_visible（解锁的明确条件是否对用户可见，1 可见 / 0 隐藏）
+  if (!achCols.includes('condition_visible')) {
+    db.exec("ALTER TABLE achievements ADD COLUMN condition_visible INTEGER NOT NULL DEFAULT 1;");
+  }
+  // 迁移：achievements 补 page（page_opens 指标对应的界面路径）
+  if (!achCols.includes('page')) {
+    db.exec("ALTER TABLE achievements ADD COLUMN page TEXT NOT NULL DEFAULT '';");
   }
 
   // 迁移：exp_transactions 补 source（经验来源标记）

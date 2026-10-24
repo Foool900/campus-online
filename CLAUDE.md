@@ -79,18 +79,18 @@ Two separate accounts live on `users`:
 
 It's an `areas` row with `slug = 'world'` and `hidden = 1`. Normal area queries filter `WHERE hidden = 0`, so it never appears on the map or in the todo/task area dropdown; clients discover it via `GET /api/world`. The `areas_visited` achievement metric also excludes hidden areas. New area-based features must keep the `hidden = 0` filter.
 
-### Map coordinate system
+### Map rendering (hash scatter, not stored coordinates)
 
-Seed coordinates are in a **logical 1000×1900 space** (`server/seed.js`). `HeDaMap.jsx` scales them to each campus's actual image size in `public/maps/` (`minglun.jpg` 1600×2749, `jinming.jpg` 920×1596). Marker positions are stored as `areas.x`/`areas.y` in logical units and patched via `PATCH /api/areas/:id` when dragged in edit mode — don't store pixel coordinates.
+The live map is `client/src/components/MapEngine.jsx`, which positions each area by a **deterministic hash of `area.id`** (`scatterPos`) inside a fixed 2400×1400 logical space — a "star map" whose layout is stable across reloads and intentionally not user-editable. The `areas.x`/`areas.y` columns still exist (seeded in a legacy 1000×1900 space) but are **not read by any live code**; the old `PATCH /api/areas/:id` edit endpoint and the `MapPage.jsx`/`HeDaMap.jsx` map were removed as dead code.
 
 ### Frontend (`client/`)
 
 - `App.jsx` owns the auth state, persisted as the token in `localStorage.campus_token`. On mount it calls `authMe()` to restore the user (a failure clears the token). It connects/disconnects the socket when the token changes and shows `LoginModal` when unauthenticated. `UserContext.jsx` exposes `{ user, token, applyAuth, logout }` via `useUser()`.
 - Routes in `App.jsx`: `/`, `/tasks`, `/leaderboard`, `/achievements`, `/profile`, `/activity/:id`, `/task/:id`, `/settings`, `/co-online`, and `*` → `null` (the map is the home screen, no page content on `/`).
 - `api.js` is a `fetch` wrapper that attaches `Authorization: Bearer <token>` automatically and throws an `Error` with `.status` on non-2xx. `socket.js` is a singleton socket.io-client with `autoConnect: false` and token in the handshake auth.
-- **HUD layout** (`components/Layout.jsx`) is the app shell: a full-screen, pannable/zoomable map (`HeDaMap`) with floating HUD panels (`HudPanels.jsx`), the global `WorldChat` pinned bottom-center, and pages rendered on top inside `HudOverlay.jsx` (a glass overlay shown whenever the route is not `/`).
+- **HUD layout** (`components/Layout.jsx`) is the app shell: a full-screen, pannable/zoomable map (`MapEngine`) with floating HUD panels (`HudPanels.jsx`), the global `WorldChat` pinned bottom-center, and pages rendered on top inside `HudOverlay.jsx` (a glass overlay shown whenever the route is not `/`).
 - `styles.css` is the original light theme; `hud.css` loads after it and overrides class names to the dark HUD look. Both are imported in `main.jsx`.
-- **Legacy dead code** (not imported by `App.jsx`): `pages/MapPage.jsx` and `components/NicknameModal.jsx`. Leave them alone or delete them.
+- **Legacy dead code** (not imported by `App.jsx`): `components/NicknameModal.jsx`. Leave it alone or delete it.
 
 ### Duplicated logic to keep in sync
 

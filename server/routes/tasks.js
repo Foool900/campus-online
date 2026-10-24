@@ -4,7 +4,7 @@ import { requireRole } from '../auth.js';
 import { config, levelOf, taskRewardCap, dailyPublishCap } from '../config.js';
 import { applyExpRaw } from '../exp.js';
 import { applyCoinRaw } from '../coin.js';
-import { triggerAchievement } from '../achievements.js';
+import { triggerAchievement, notifyNewProgressAchievements } from '../achievements.js';
 import {
   worldChannelId,
   listConversationMessages,
@@ -580,9 +580,13 @@ router.post('/tasks/:id/submit', requireRole('student', 'admin'), (req, res) => 
 });
 
 router.post('/tasks/:id/approve', requireRole('student', 'admin'), (req, res) => {
-  const result = approveTask(req.user, Number(req.params.id), { ip: req.ip, userAgent: req.headers['user-agent'] });
+  const taskId = Number(req.params.id);
+  const result = approveTask(req.user, taskId, { ip: req.ip, userAgent: req.headers['user-agent'] });
   notifyUnlocked(req, result.unlocked);
   if (result.error) return res.status(result.status).json({ error: result.error, code: result.code });
+  // 接取者获得经验 → 检查 exp_total 等进度型成就
+  const assigneeId = db.prepare('SELECT assignee_id FROM tasks WHERE id = ?').get(taskId)?.assignee_id;
+  if (assigneeId) notifyNewProgressAchievements(assigneeId, req.app.get('io'));
   emitTaskChanged(req, result.task.id, result.sys);
   res.json(result.task);
 });
@@ -612,6 +616,8 @@ router.post('/tasks/:id/abandon', requireRole('student', 'admin'), (req, res) =>
 router.patch('/tasks/:id/toggle-done', requireRole('student', 'admin'), (req, res) => {
   const result = toggleTaskDone(req.user, Number(req.params.id));
   if (result.error) return res.status(result.status).json({ error: result.error, code: result.code });
+  // 完成备忘可能让 todos_completed / exp_total 等进度型成就跨过阈值 → 检测并弹窗
+  notifyNewProgressAchievements(req.user.id, req.app.get('io'));
   emitTaskChanged(req, result.task.id, null);
   res.json(result.task);
 });

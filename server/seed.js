@@ -181,9 +181,6 @@ export function seedIfEmpty() {
   const insertUser = db.prepare('INSERT INTO users (nickname, college, avatar, exp, created_at) VALUES (?, ?, ?, ?, ?)');
   const insertMessage = db.prepare('INSERT INTO messages (channel_id, user_id, conversation_type, conversation_id, content, created_at) VALUES (?, ?, ?, ?, ?, ?)');
   const insertPost = db.prepare('INSERT INTO posts (channel_id, user_id, title, content, category, created_at) VALUES (?, ?, ?, ?, ?, ?)');
-  const insertAchievement = db.prepare(
-    'INSERT INTO achievements (code, name, description, icon, metric, threshold) VALUES (?, ?, ?, ?, ?, ?)'
-  );
 
   db.transaction(() => {
     const campusIdBySlug = {};
@@ -213,10 +210,6 @@ export function seedIfEmpty() {
       campusIdBySlug['minglun'], '世界广场', 'world', '全局世界频道', 0, 0, '#38bdf8', '🌐', 1
     );
     insertChannel.run(Number(worldAreaInfo.lastInsertRowid), '世界频道');
-
-    for (const a of ACHIEVEMENTS) {
-      insertAchievement.run(a.code, a.name, a.description, a.icon, a.metric, a.threshold);
-    }
 
     // 演示用户
     const demoInfo = insertUser.run('小荷', '计算机与信息工程学院', '🐸', 30, nowIso());
@@ -265,7 +258,7 @@ export function ensureWorldChannel() {
 // 幂等：确保管理员账号存在（昵称可用环境变量 ADMIN_NICKNAME 覆盖，默认 FOolish）
 export function ensureAdmin() {
   const nick = process.env.ADMIN_NICKNAME || 'FOolish';
-  const fullPerms = JSON.stringify(['COIN_ADD', 'COIN_MINUS', 'USER_MANAGE', 'ADMIN_GRANT']);
+  const fullPerms = JSON.stringify(['COIN_ADD', 'COIN_MINUS', 'USER_MANAGE', 'ADMIN_GRANT', 'ACHIEVEMENT_MANAGE']);
   const existing = db.prepare('SELECT id FROM users WHERE nickname = ?').get(nick);
   if (!existing) {
     const info = db
@@ -277,7 +270,7 @@ export function ensureAdmin() {
   return existing.id;
 }
 
-// 触发式成就（metric='trigger'，由 server/achievements.js 的 triggerAchievement 幂等解锁）
+// 触发式成就（kind='trigger'，由 server/achievements.js 的 triggerAchievement 幂等解锁）
 const TRIGGER_ACHIEVEMENTS = [
   { code: 'EXP_001', name: '初次校准', hint: '接入明伦校区星图', description: '首次登录并加载地图', icon: '🛰️', type: 'exploration' },
   { code: 'EXP_002', name: '微观视界', hint: '拉近你的镜头，看清世界的纹理', description: '地图缩放达到最大倍率', icon: '🔬', type: 'exploration' },
@@ -296,19 +289,23 @@ const TRIGGER_ACHIEVEMENTS = [
   { code: 'EXP_015', name: '摸鱼先锋', hint: '什么都不做，也是一种修行', description: '在地图界面无操作挂机60分钟', icon: '🦥', type: 'secret' },
 ];
 
-// 幂等：确保触发式成就定义存在，并同步更新 hint/名称/描述（每次启动调用）
+// 幂等：确保成就定义存在（进度型 + 触发型）。只补缺失，绝不覆盖——管理员后台的编辑以数据库为准。
 export function ensureAchievements() {
-  const upsert = db.prepare(
-    `INSERT INTO achievements (code, name, description, hint, icon, metric, threshold, type)
-     VALUES (?, ?, ?, ?, ?, 'trigger', 1, ?)
-     ON CONFLICT(code) DO UPDATE SET
-       name = excluded.name,
-       description = excluded.description,
-       hint = excluded.hint,
-       icon = excluded.icon,
-       type = excluded.type`
+  const insertProgress = db.prepare(
+    `INSERT INTO achievements (code, name, description, icon, metric, threshold, kind)
+     VALUES (?, ?, ?, ?, ?, ?, 'progress')
+     ON CONFLICT(code) DO NOTHING`
+  );
+  for (const a of ACHIEVEMENTS) {
+    insertProgress.run(a.code, a.name, a.description, a.icon, a.metric, a.threshold);
+  }
+
+  const insertTrigger = db.prepare(
+    `INSERT INTO achievements (code, name, description, hint, icon, metric, threshold, type, kind)
+     VALUES (?, ?, ?, ?, ?, 'trigger', 1, ?, 'trigger')
+     ON CONFLICT(code) DO NOTHING`
   );
   for (const a of TRIGGER_ACHIEVEMENTS) {
-    upsert.run(a.code, a.name, a.description, a.hint, a.icon, a.type);
+    insertTrigger.run(a.code, a.name, a.description, a.hint, a.icon, a.type);
   }
 }

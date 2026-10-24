@@ -1038,6 +1038,42 @@ export function listMyDisputes(userId) {
   return { limit, used, remaining: Math.max(0, limit - used), reportable, disputes };
 }
 
+// 管理员查看纠纷列表（可 ?status= 过滤），附举报方 / 被举报卖家 / 关联商品（纯只读）
+export function listAdminDisputes(status = null) {
+  const where = status ? 'AND d.status = ?' : '';
+  const params = status ? [status] : [];
+  const rows = db.prepare(`
+    SELECT d.id, d.order_id, d.item_id, d.type, d.reason, d.evidence_json, d.status, d.resolved_at, d.created_at,
+           r.nickname AS reporter_name, r.avatar AS reporter_avatar,
+           i.title AS item_title,
+           o.seller_id AS seller_id, s.nickname AS seller_name, s.avatar AS seller_avatar,
+           o.buyer_id AS buyer_id, b.nickname AS buyer_name
+    FROM market_disputes d
+    JOIN users r ON r.id = d.reporter_id
+    LEFT JOIN market_orders o ON o.id = d.order_id
+    LEFT JOIN market_items i ON i.id = COALESCE(d.item_id, o.item_id)
+    LEFT JOIN users s ON s.id = o.seller_id
+    LEFT JOIN users b ON b.id = o.buyer_id
+    WHERE 1=1 ${where}
+    ORDER BY d.id DESC
+  `).all(...params);
+  return rows.map((row) => ({
+    id: row.id,
+    orderId: row.order_id,
+    itemId: row.item_id,
+    type: row.type,
+    reason: row.reason,
+    evidenceJson: row.evidence_json,
+    status: row.status,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at,
+    reporter: { id: row.reporter_id, nickname: row.reporter_name, avatar: row.reporter_avatar },
+    itemTitle: row.item_title,
+    seller: row.seller_id ? { id: row.seller_id, nickname: row.seller_name, avatar: row.seller_avatar } : null,
+    buyer: row.buyer_id ? { id: row.buyer_id, nickname: row.buyer_name } : null,
+  }));
+}
+
 // 买家评价卖家（1-5 星），completed 后 rateWindowDays 天内可评，幂等 (order_id,'rating',seller_id)
 export function rateOrder(buyerId, orderId, rating) {
   const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(orderId);
@@ -1463,6 +1499,12 @@ router.post('/market/orders/:id/rate', requireRole('student', 'admin'), (req, re
   const r = rateOrder(req.user.id, Number(req.params.id), req.body.rating);
   if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
+});
+
+router.get('/market/disputes', requireRole('admin'), (req, res) => {
+  const status = req.query.status;
+  const valid = ['pending', 'reviewing', 'resolved_buyer', 'resolved_seller', 'dismissed'];
+  res.json(listAdminDisputes(valid.includes(status) ? status : null));
 });
 
 router.get('/market/disputes/mine', requireRole('student', 'admin'), (req, res) => {

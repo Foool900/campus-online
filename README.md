@@ -132,7 +132,7 @@ campus-online/
         ├── hud.css         # 游戏 HUD 主题（覆盖样式）
         ├── components/
         │   ├── Layout.jsx           # HUD 外壳（全屏地图 + 悬浮面板）
-        │   ├── HeDaMap.jsx          # 卡通校园 SVG 地图（分校区）
+        │   ├── MapEngine.jsx        # 全屏地图引擎（hash 散点星图，三层视差）
         │   ├── AreaDialog.jsx       # 区域对话框（活动区 + 聊天区）
         │   ├── PostEditor.jsx       # 活动帖发布编辑器
         │   ├── MobileHud.jsx        # 手机端 HUD（横竖屏）
@@ -141,11 +141,9 @@ campus-online/
         │   ├── HudOverlay.jsx       # 覆盖式页面面板
         │   └── NicknameModal.jsx    # 首登弹窗
         └── pages/
-            ├── MapPage.jsx           # 地图页（legacy，未启用）
             ├── TasksPage.jsx         # 任务页
             ├── LeaderboardPage.jsx   # 排行榜
-            ├── AchievementsPage.jsx  # 成就页
-            ├── ProfilePage.jsx       # 个人页
+            ├── ProfilePage.jsx       # 个人页（含成就徽章）
             ├── SignInPage.jsx        # 每日签到
             ├── MarketPage.jsx        # 二手市场
             ├── LotteryPage.jsx       # 奖池抽奖
@@ -187,7 +185,6 @@ npm run client   # 仅前端（http://localhost:5173）
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/campuses` | 列出所有校区 |
 | GET | `/api/areas` | 列出所有区域（可加 `?campusId=` 按校区过滤） |
-| PATCH | `/api/areas/:id` | 更新区域坐标（编辑模式拖拽） |
 | GET | `/api/areas/:areaId/channels` | 某区域下的频道 |
 | GET | `/api/channels/:channelId/messages` | 频道历史消息 |
 | POST | `/api/channels/:channelId/messages` | 发送频道消息（`{ userId, content }`） |
@@ -207,7 +204,12 @@ npm run client   # 仅前端（http://localhost:5173）
 | GET | `/api/stickers` | 我的表情包（`?userId=`） |
 | POST | `/api/stickers` | 上传表情包（raw 二进制，≤2MB，png/jpg/gif/webp） |
 | DELETE | `/api/stickers/:id` | 删除表情包 |
-| GET | `/api/achievements?userId=...` | 成就列表（含当前进度与解锁状态） |
+| GET | `/api/achievements` | 统一成就列表（进度型 + 触发型，含解锁状态与进度） |
+| POST | `/api/achievements/trigger` | 触发埋点解锁成就（`{ code }`，幂等） |
+| GET | `/api/admin/achievements` | 成就定义列表（管理端，需 ACHIEVEMENT_MANAGE） |
+| POST | `/api/admin/achievements` | 新增成就定义（管理端） |
+| PATCH | `/api/admin/achievements/:code` | 编辑成就定义（管理端） |
+| DELETE | `/api/admin/achievements/:code` | 删除成就定义（管理端） |
 | GET | `/api/coin/wallet` | 我的账户（exp/level/coin/frozenCoin） |
 | GET | `/api/coin/config` | 金币经济配置（上限等） |
 | GET | `/api/signin` | 签到状态（连击/今日奖励） |
@@ -255,7 +257,7 @@ npm run client   # 仅前端（http://localhost:5173）
 | `market_listings` | id, seller_id, type, title, description, price_coin, status, ... | 市场挂单（二手） |
 | `market_orders` | id, listing_id, buyer_id, seller_id, price_coin, fee_coin, status, ... | 市场订单（记录手续费） |
 | `treasury` | id(=1), balance_coin | 公共奖池（手续费流入） |
-| `achievements` | id, code, name, description, icon, metric, threshold | 成就定义（进度由现有数据动态计算） |
+| `achievements` | id, code, name, description, icon, metric, threshold, kind, type, hint | 成就定义：`kind='progress'`（进度型，按 metric 实时计算）/ `kind='trigger'`（触发型，埋点幂等解锁） |
 
 - 活动状态：`draft(草稿)` / `open(报名中)` / `ongoing(进行中)` / `ended(已结束)` / `cancelled(已取消)`；终态不可再变。
 - 角色：`admin`（发起人，不可转让）/ `participant`（已加入）/ `guest`（访客）；服务端每个写接口独立鉴权。

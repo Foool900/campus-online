@@ -1,35 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
+import { MegaphoneIcon } from './MarketIcons.jsx';
 
-// 全服喇叭：顶部滚动条 + 内联 composer（仅开市 + student/admin 可发）
-// 自包含：拉 GET /market/broadcasts，30s 轮询（仅页面可见时）
-export default function MarketBroadcastBar({ open, sessionId }) {
+// 全服喇叭（per-session）：顶部滚动条 + 内联 composer（仅开市 + student/admin 可发）。
+// 受控组件：data 由 useMarketData 传入，提交后回调 onChanged 刷新，不再自行轮询。
+export default function MarketBroadcastBar({ data, open, sessionId, onChanged }) {
   const { user } = useUser();
   const isStudent = user && (user.role === 'student' || user.role === 'admin');
 
-  const [data, setData] = useState(null); // { fee, limit, myCount, broadcasts }
   const [content, setContent] = useState('');
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
-
-  // load 不清 err/msg（30s 轮询不清提示），只在失败时清旧 msg 再设 err
-  const load = useCallback(() => {
-    if (!sessionId) return;
-    api.marketBroadcasts(sessionId)
-      .then(setData)
-      .catch((e) => { setMsg(''); setErr(e.message); });
-  }, [sessionId]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    load();
-    const poll = setInterval(() => {
-      if (document.visibilityState === 'visible') load();
-    }, 30000);
-    return () => clearInterval(poll);
-  }, [sessionId, load]);
 
   // 成功提示 3 秒自动清除
   useEffect(() => {
@@ -37,8 +20,6 @@ export default function MarketBroadcastBar({ open, sessionId }) {
     const t = setTimeout(() => setMsg(''), 3000);
     return () => clearTimeout(t);
   }, [msg]);
-
-  if (!sessionId) return null;
 
   const fee = data?.fee ?? 0;
   const limit = data?.limit ?? 0;
@@ -56,11 +37,11 @@ export default function MarketBroadcastBar({ open, sessionId }) {
       await api.marketBroadcast({ sessionId, content: text });
       setContent('');
       setMsg('已广播');
-      load();
-    } catch (e) {
-      if (e.code === 'SENSITIVE_CONTENT') setErr('内容包含违规词，请修改');
-      else if (e.code === 'COIN_INSUFFICIENT') setErr('金币不足：喇叭费用不足');
-      else setErr(e.message);
+      onChanged && onChanged();
+    } catch (e2) {
+      if (e2.code === 'SENSITIVE_CONTENT') setErr('内容包含违规词，请修改');
+      else if (e2.code === 'COIN_INSUFFICIENT') setErr('金币不足：喇叭费用不足');
+      else setErr(e2.message);
     } finally {
       setBusy(false);
     }
@@ -76,7 +57,7 @@ export default function MarketBroadcastBar({ open, sessionId }) {
   return (
     <div className="card" style={{ margin: '12px 0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontWeight: 600 }}>📢 全服喇叭</span>
+        <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><MegaphoneIcon size={15} /> 全服喇叭</span>
       </div>
 
       {!data ? (
@@ -110,7 +91,7 @@ export default function MarketBroadcastBar({ open, sessionId }) {
               {busy ? '广播中...' : '广播'}
             </button>
             <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-              {fee > 0 ? `需付 🪙${fee}` : '免费'}
+              {fee > 0 ? `需付 ${fee} 金币` : '免费'}
             </span>
           </form>
         )

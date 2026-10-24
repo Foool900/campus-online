@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, nowIso } from '../db.js';
-import { requireRole } from '../auth.js';
+import { requireRole, requirePermission, isSuperAdmin, getUserPermissions } from '../auth.js';
 
 const router = Router();
 
@@ -131,25 +131,37 @@ router.post('/verification/:id/reject', requireRole('admin'), (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /api/admin —— 管理员列表（管理员）
+// GET /api/admin —— 管理员列表（管理员；含权限与是否超级管理员，供前端分层展示）
 router.get('/admin', requireRole('admin'), (req, res) => {
-  const admins = db.prepare("SELECT id, nickname, college, avatar FROM users WHERE role = 'admin' ORDER BY id ASC").all();
-  res.json(admins);
+  const admins = db
+    .prepare("SELECT id, nickname, college, avatar, role, permissions FROM users WHERE role = 'admin' ORDER BY id ASC")
+    .all();
+  res.json(
+    admins.map((a) => ({
+      id: a.id,
+      nickname: a.nickname,
+      college: a.college,
+      avatar: a.avatar,
+      permissions: getUserPermissions(a),
+      isSuper: isSuperAdmin(a),
+    }))
+  );
 });
 
-// POST /api/admin —— 添加辅助管理员（管理员）
-router.post('/admin', requireRole('admin'), (req, res) => {
+// POST /api/admin —— 添加辅助管理员（仅超级管理员）
+router.post('/admin', requirePermission('ADMIN_GRANT'), (req, res) => {
   const { nickname } = req.body || {};
   const name = typeof nickname === 'string' ? nickname.trim() : '';
   if (!name) return res.status(400).json({ error: '请输入要添加的管理员昵称' });
   const user = db.prepare('SELECT * FROM users WHERE nickname = ?').get(name);
   if (!user) return res.status(404).json({ error: '该用户不存在' });
-  db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(user.id);
+  // 新管理员默认无 RBAC 权限，由超级管理员随后按需分配
+  db.prepare("UPDATE users SET role = 'admin', permissions = '[]' WHERE id = ?").run(user.id);
   res.json({ ok: true });
 });
 
-// DELETE /api/admin/:id —— 移除管理员（管理员；不能移除自己）
-router.delete('/admin/:id', requireRole('admin'), (req, res) => {
+// DELETE /api/admin/:id —— 移除管理员（仅超级管理员；不能移除自己）
+router.delete('/admin/:id', requirePermission('ADMIN_GRANT'), (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: '无效的用户 ID' });
   if (id === req.user.id) return res.status(403).json({ error: '不能移除自己' });
@@ -157,11 +169,11 @@ router.delete('/admin/:id', requireRole('admin'), (req, res) => {
   if (!user) return res.status(404).json({ error: '用户不存在' });
   if (user.role !== 'admin') return res.status(409).json({ error: '该用户不是管理员' });
 
-  // 移除管理员：若曾是认证学员则降回学员，否则降回会员
+  // 移除管理员：若曾是认证学员则降回学员，否则降回会员；同时清空权限
   const wasStudent = db
     .prepare("SELECT 1 FROM verifications WHERE user_id = ? AND status = 'approved'")
     .get(id);
-  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(wasStudent ? 'student' : 'member', id);
+  db.prepare('UPDATE users SET role = ?, permissions = ? WHERE id = ?').run(wasStudent ? 'student' : 'member', '[]', id);
   res.json({ ok: true });
 });
 

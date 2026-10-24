@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { db } from '../db.js';
-import { requireRole } from '../auth.js';
 
 const router = Router();
 
@@ -16,28 +15,6 @@ router.get('/areas', (req, res) => {
     : db.prepare('SELECT * FROM areas WHERE hidden = 0 ORDER BY campus_id ASC, id ASC').all();
 
   res.json(areas);
-});
-
-// PATCH /api/areas/:id —— 更新标记坐标（地图编辑模式拖拽定位用）
-router.patch('/areas/:id', requireRole('admin'), (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
-    return res.status(400).json({ error: '无效的区域 ID' });
-  }
-  const area = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
-  if (!area) {
-    return res.status(404).json({ error: '区域不存在' });
-  }
-
-  const { x, y } = req.body || {};
-  const nx = x !== undefined ? Number(x) : area.x;
-  const ny = y !== undefined ? Number(y) : area.y;
-  if (!Number.isFinite(nx) || !Number.isFinite(ny)) {
-    return res.status(400).json({ error: '无效的坐标' });
-  }
-
-  db.prepare('UPDATE areas SET x = ?, y = ? WHERE id = ?').run(nx, ny, id);
-  res.json(db.prepare('SELECT * FROM areas WHERE id = ?').get(id));
 });
 
 export default router;

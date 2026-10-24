@@ -4,10 +4,11 @@ import { api } from './api.js';
 import { socket } from './socket.js';
 import { UserContext } from './UserContext.jsx';
 import Layout from './components/Layout.jsx';
+import { AchievementToastProvider } from './components/AchievementToast.jsx';
+import { BackgroundMusicProvider } from './components/BackgroundMusic.jsx';
 import LoginModal from './components/LoginModal.jsx';
 import TasksPage from './pages/TasksPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
-import AchievementsPage from './pages/AchievementsPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import ActivityDetailPage from './pages/ActivityDetailPage.jsx';
 import TaskDetailPage from './pages/TaskDetailPage.jsx';
@@ -70,6 +71,8 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <AchievementToastProvider>
+      <BackgroundMusicProvider>
       <UserContext.Provider value={value}>
         <Layout key={token || 'anon'}>
           <Routes>
@@ -79,7 +82,6 @@ export default function App() {
             <Route path="/market" element={<MarketPage />} />
             <Route path="/lottery" element={<LotteryPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
-            <Route path="/achievements" element={<AchievementsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/activity/:id" element={<ActivityDetailPage />} />
             <Route path="/task/:id" element={<TaskDetailPage />} />
@@ -90,6 +92,8 @@ export default function App() {
         </Layout>
         {authReady && !token && <LoginModal onAuth={applyAuth} />}
       </UserContext.Provider>
+      </BackgroundMusicProvider>
+      </AchievementToastProvider>
     </BrowserRouter>
   );
 }
