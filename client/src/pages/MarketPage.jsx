@@ -15,6 +15,13 @@ function fmtCountdown(ms) {
   return `${h}:${m}:${sec}`;
 }
 
+// 盲盒保证金/保底：与后端 listItem 同一公式、同一 ratio（缺省 0.8 / 0.1）
+function blindboxAmounts(priceNum, cfg) {
+  const deposit = Math.max(1, Math.floor(priceNum * (cfg?.blindboxDepositRatio ?? 0.8)));
+  const minValue = Math.max(1, Math.floor(priceNum * (cfg?.blindboxMinValueRatio ?? 0.1)));
+  return { deposit, minValue };
+}
+
 export default function MarketPage() {
   const { user } = useUser();
   const [session, setSession] = useState(null);
@@ -31,12 +38,16 @@ export default function MarketPage() {
   const [price, setPrice] = useState('');
   const [type, setType] = useState('normal');
   const [offer, setOffer] = useState('');
+  const [description, setDescription] = useState('');
+  const [boxContent, setBoxContent] = useState('');
+  const [mktConfig, setMktConfig] = useState(null);
 
   const isStudent = user && (user.role === 'student' || user.role === 'admin');
 
   const load = useCallback(() => {
     api.marketSession().then((r) => {
       setSession(r.session);
+      setMktConfig(r.config ?? null);
       setServerOffset(new Date(r.serverTime).getTime() - Date.now());
     }).catch((e) => setErr(e.message));
     api.marketStalls().then(setStalls).catch(() => {});
@@ -56,6 +67,10 @@ export default function MarketPage() {
   const myStall = stalls.find((s) => s.owner_id === user?.id && (s.status === 'reserved' || s.status === 'occupied'));
   const sessionId = session?.id;
   const activeItems = items.filter((i) => i.status === 'active');
+  const priceNum = Number(price);
+  const blindboxPreview = type === 'blindbox' && mktConfig && Number.isInteger(priceNum) && priceNum > 0
+    ? blindboxAmounts(priceNum, mktConfig)
+    : null;
 
   const refresh = () => { load(); setMsg(''); setErr(''); };
 
@@ -71,12 +86,30 @@ export default function MarketPage() {
     e.preventDefault();
     const p = Number(price);
     if (!title.trim() || !Number.isInteger(p) || p <= 0) return setErr('请填写标题和正整数价格');
+
+    const body = { sessionId, title: title.trim(), priceCoin: p, type };
+    if (description.trim()) body.description = description.trim();
+    if (type === 'blindbox') {
+      body.stock = 1; // 盲盒强制单件
+      if (boxContent.trim()) body.contentJson = { text: boxContent.trim() }; // 留空不传
+    }
+    const amounts = type === 'blindbox' ? blindboxAmounts(p, mktConfig) : null;
+
+    let itemId = null;
     try {
-      const r = await api.marketCreateItem({ sessionId, title: title.trim(), priceCoin: p, type });
-      await api.marketListItem(r.itemId, { stallId: myStall.id });
-      setTitle(''); setPrice('');
-      setMsg('已上架'); refresh();
-    } catch (e) { setErr(e.message); }
+      const r = await api.marketCreateItem(body);
+      itemId = r.itemId;
+      await api.marketListItem(itemId, { stallId: myStall.id });
+      setTitle(''); setPrice(''); setDescription(''); setBoxContent(''); setType('normal');
+      refresh(); // refresh 会清 msg/err，成功提示须在其后 set 才可见
+      setMsg(type === 'blindbox' ? `盲盒已上架（已冻结保证金 ${amounts.deposit} 金币）` : '已上架');
+    } catch (e) {
+      // listItem 失败（如保证金不足）：best-effort 清掉刚建的 draft，一次尝试、静默失败
+      if (itemId) { try { await api.marketRemoveItem(itemId); } catch { /* 忽略 */ } }
+      if (e.code === 'COIN_INSUFFICIENT') setErr(`金币不足：上架盲盒需冻结保证金 ${amounts.deposit} 金币，当前余额不够`);
+      else if (e.code === 'SENSITIVE_CONTENT') setErr('内容包含违规词，请修改');
+      else setErr(e.message);
+    }
   };
   const buy = async (item) => {
     try { const r = await api.marketBuy(item.id); setMsg(`已购买，订单 #${r.orderId}（已冻结 ${r.price} 金币）`); refresh(); } catch (e) { setErr(e.message); }
@@ -155,6 +188,23 @@ export default function MarketPage() {
               </select>
             </div>
           </div>
+          <div className="field" style={{ marginTop: 8 }}>
+            <label>商品描述</label>
+            <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="补充描述（可选）" style={{ width: '100%', boxSizing: 'border-box' }} />
+          </div>
+          {type === 'blindbox' && (
+            <div className="field" style={{ marginTop: 8 }}>
+              <label>盲盒内容</label>
+              <textarea value={boxContent} onChange={(e) => setBoxContent(e.target.value)} rows={2} placeholder="盒子里装什么？（留空则默认惊喜）" style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical' }} />
+            </div>
+          )}
+          {type === 'blindbox' && (
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+              {blindboxPreview
+                ? `上架将冻结 🪙${blindboxPreview.deposit} 金币保证金，保底价值 🪙${blindboxPreview.minValue} 金币`
+                : mktConfig ? '请输入正整数价格查看保证金预览' : '上架将按标价比例计算保证金与保底价值'}
+            </div>
+          )}
           <button type="submit" className="btn primary">＋ 上架</button>
         </form>
       )}
