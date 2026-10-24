@@ -265,6 +265,7 @@ npm run client   # 仅前端（http://localhost:5173）
 ## 已知限制
 
 - 本仓库为**原型**，数据保存在本地 SQLite（部署环境需备份 `server/data/campus.db` 持久化）。
+- **金币账本历史差异**：v0 迁移把旧 `available_exp` 回填为 `coin`（约 30）时未写对应 `mint` 流水，属已知历史项（见 `scripts/audit-treasury.js` 的差异白名单）。
 - **无实名、无登录**：以 localStorage 中的 `campus_user` 标识匿名用户，同名用户会被复用。
 - **地图为手绘示意 SVG**：不复制官方地图素材与校徽；地点名称来自两校区地点清单。
 - 聊天内容仅做**基础过滤**（空消息拦截、长度限制、前端安全渲染，不渲染 HTML），无敏感词过滤。
