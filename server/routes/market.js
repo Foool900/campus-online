@@ -248,6 +248,10 @@ export function releaseStall(userId, stallId) {
 // 商品
 // ============================================================
 
+/**
+ * 上架商品（draft）。盲盒的 contentJson 描述盒内内容：接受 `{ text }` 对象或 JSON 字符串，
+ * 缺省/空串 → 惊喜盲盒；入库前统一序列化为 JSON 字符串。
+ */
 export function createItem(userId, { sessionId, title, description, priceCoin, type = 'normal', stock = 1, contentJson = null, valueCoin = null }) {
   const sys = assertNotSystem(userId);
   if (sys) return sys;
@@ -272,7 +276,9 @@ export function createItem(userId, { sessionId, title, description, priceCoin, t
     const itemId = Number(info.lastInsertRowid);
 
     if (type === 'blindbox') {
-      const content = contentJson || JSON.stringify({ surprise: true });
+      const content = (contentJson == null || contentJson === '')
+        ? JSON.stringify({ surprise: true })
+        : (typeof contentJson === 'string' ? contentJson : JSON.stringify(contentJson));
       const deposit = Math.max(1, Math.floor(price * cfg('blindboxDepositRatio')));
       const minValue = Math.max(1, Math.floor(price * cfg('blindboxMinValueRatio')));
       db.prepare('INSERT INTO market_blindbox_configs (item_id, content_json, deposit_coin, min_value_coin, created_at) VALUES (?, ?, ?, ?, ?)')
@@ -718,7 +724,9 @@ export function openBlindbox(buyerId, orderId) {
     return true;
   });
   if (r.error) return r;
-  return { ok: true };
+  let result;
+  try { result = JSON.parse(bc.content_json); } catch { result = bc.content_json; } // parse 失败回退原始字符串
+  return { ok: true, result };
 }
 
 // ============================================================

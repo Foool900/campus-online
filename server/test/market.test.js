@@ -8,7 +8,7 @@ const { config } = await import('../config.js');
 const { systemAccountId } = await import('../treasury.js');
 const {
   createSession, createItem, listItem, buyItem, confirmOrder,
-  createBargain, acceptBargain, payOrder, grabStall, confirmStall,
+  createBargain, acceptBargain, payOrder, grabStall, confirmStall, openBlindbox,
 } = await import('../routes/market.js');
 
 initDb();
@@ -142,4 +142,34 @@ test('createItem 校验 stock 正整数 + 盲盒强制单件', () => {
   const bb = createItem(seller, { sessionId: sid, title: '盲盒多件', priceCoin: 10, type: 'blindbox', stock: 5 });
   assert.equal(bb.status, 400);
   assert.equal(bb.error, '盲盒库存必须为 1');
+});
+
+test('盲盒填内容：对象/字符串 contentJson 落库为 JSON 字符串，开盒回传 text', () => {
+  const sid = openSession();
+  const seller = makeUser(1000);
+  const buyer = makeUser(1000);
+  const stallId = occupiedStall(seller, sid);
+
+  // 对象路径（前端真实调用）
+  const c = createItem(seller, { sessionId: sid, title: '盲盒', priceCoin: 100, type: 'blindbox', contentJson: { text: '神秘好物' } });
+  assert.equal(c.error, undefined);
+  assert.equal(db.prepare('SELECT content_json FROM market_blindbox_configs WHERE item_id=?').get(c.itemId).content_json, '{"text":"神秘好物"}');
+
+  // 字符串路径（后端兼容）
+  const c2 = createItem(seller, { sessionId: sid, title: '盲盒2', priceCoin: 100, type: 'blindbox', contentJson: '{"text":"字符串内容"}' });
+  assert.equal(c2.error, undefined);
+  assert.equal(db.prepare('SELECT content_json FROM market_blindbox_configs WHERE item_id=?').get(c2.itemId).content_json, '{"text":"字符串内容"}');
+
+  // 空串 → 默认惊喜
+  const c3 = createItem(seller, { sessionId: sid, title: '盲盒3', priceCoin: 100, type: 'blindbox', contentJson: '' });
+  assert.equal(c3.error, undefined);
+  assert.equal(db.prepare('SELECT content_json FROM market_blindbox_configs WHERE item_id=?').get(c3.itemId).content_json, '{"surprise":true}');
+
+  // 填内容 → 上架 → 购买 → 开盒 → result.text 回传
+  assert.equal(listItem(seller, c.itemId, { stallId }).error, undefined);
+  const b = buyItem(buyer, c.itemId);
+  assert.equal(b.error, undefined);
+  const o = openBlindbox(buyer, b.orderId);
+  assert.equal(o.error, undefined);
+  assert.equal(o.result.text, '神秘好物');
 });
