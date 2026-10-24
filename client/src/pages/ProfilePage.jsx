@@ -138,6 +138,7 @@ const ACHIEVEMENT_METRICS = [
 
 // 管理员控制台：金币发放
 function CoinGrant() {
+  const { user, setUser } = useUser();
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [target, setTarget] = useState(null);
@@ -151,8 +152,14 @@ function CoinGrant() {
     const amt = Number(amount);
     if (!Number.isInteger(amt) || amt === 0) return setErr('请输入非零整数');
     try {
-      await api.adminGrantCoin(target.id, { amount: amt, reason });
-      setMsg('已执行'); setErr('');
+      const r = await api.adminGrantCoin(target.id, { amount: amt, reason });
+      setMsg(`已执行：${target.nickname} 当前余额 ${r.balance} 金币`);
+      setErr('');
+      setAmount('');
+      // 若发给自己，同步刷新当前用户上下文里的余额，避免「总金币」不更新
+      if (target.id === user?.id) {
+        setUser(await api.authMe());
+      }
     } catch (e) {
       setErr(e.message || '执行失败');
     }

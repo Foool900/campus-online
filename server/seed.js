@@ -259,7 +259,7 @@ export function ensureWorldChannel() {
 export function ensureAdmin() {
   const nick = process.env.ADMIN_NICKNAME || 'FOolish';
   const fullPerms = JSON.stringify(['COIN_ADD', 'COIN_MINUS', 'USER_MANAGE', 'ADMIN_GRANT', 'ACHIEVEMENT_MANAGE']);
-  const existing = db.prepare('SELECT id FROM users WHERE nickname = ?').get(nick);
+  const existing = db.prepare('SELECT id FROM users WHERE nickname = ? COLLATE NOCASE').get(nick);
   if (!existing) {
     const info = db
       .prepare("INSERT INTO users (nickname, college, avatar, exp, role, permissions, created_at) VALUES (?, '', '🎓', 0, 'admin', ?, ?)")
