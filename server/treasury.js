@@ -1,6 +1,7 @@
 import { db, nowIso } from './db.js';
 
-// 公共奖池（单行 id=1）。交易手续费流入，抽奖支出。
+// @deprecated（Step 5 删除）旧账面奖池。市场/抽奖已迁移到 SYSTEM 真实账户，
+// 以下 ensureTreasury / treasuryBalance / addTreasury / spendTreasury 仅保留兼容，无调用方。
 // 这里不做事务包装，供调用方在 db.transaction 内组合。
 
 export function ensureTreasury() {
