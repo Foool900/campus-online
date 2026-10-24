@@ -86,10 +86,12 @@ test('listShops：2 用户同店出价，highestBid 取最高、bidCount=2、各
   assert.equal(sb.myBid, 200); // B 只见自己的，看不到 A 的 300
 });
 
-test('listShops：过期期出价不进入 highestBid/bidCount/myBid（只查当期）', () => {
+test('listShops：非当期出价不进入 highestBid/bidCount/myBid（只查当期）', () => {
   const user = makeUser(500);
   const shop = shopByNo(4);
-  bidShop(user, shop.id, '2026-W01', 999); // 历史期，非当期
+  const { deadlineAt } = auctionTerm();
+  const otherWeek = isoWeekOf(new Date(Date.parse(deadlineAt) + 7 * 86400000)); // 未来但非当期（过期期已被 bidShop 拒绝）
+  bidShop(user, shop.id, otherWeek, 999);
 
   const r = listShops(user);
   const s = r.shops.find((x) => x.id === shop.id);

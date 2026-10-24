@@ -731,6 +731,11 @@ export function bidShop(userId, shopId, termWeek, amountCoin) {
   const shop = db.prepare('SELECT * FROM market_shops WHERE id=?').get(shopId);
   if (!shop) return { error: '店铺不存在', status: 404 };
 
+  // 校验期次：格式必须为 YYYY-Www，且截止时间未过（拒绝绕过前端 gate 对过期期出价）
+  const deadline = termWeekStartIso(termWeek);
+  if (!deadline) return { error: '期次格式无效', status: 400 };
+  if (new Date(deadline).getTime() <= Date.now()) return { error: '该期竞拍已截止', code: 'AUCTION_TERM_CLOSED', status: 409 };
+
   const key = `shop_bid:${shopId}:${termWeek}:${userId}`;
   const r = runTx(() => {
     const existing = db.prepare('SELECT * FROM market_shop_bids WHERE shop_id=? AND term_week=? AND user_id=?').get(shopId, termWeek, userId);

@@ -8,6 +8,7 @@ const {
   createSession, createItem, listItem, buyItem, openBlindbox,
   createBargain, acceptBargain, grabStall, confirmStall, ensureMarketShops, bidShop,
   expireStalls, expireBargainPayments, releaseBlindboxHolds, settleDueShopTerms,
+  auctionTerm,
 } = await import('../routes/market.js');
 
 initDb();
@@ -119,7 +120,7 @@ test('盲盒保证金 24h 后释放：held→released + 保证金退款，幂等
 test('店铺竞拍结算：中标付租、未中标退款，幂等不重复', () => {
   ensureMarketShops();
   const shop = db.prepare('SELECT * FROM market_shops ORDER BY id LIMIT 1').get();
-  const termWeek = '2026-W01';
+  const termWeek = auctionTerm().termWeek; // 未来期（bidShop 现在拒绝已截止期）
   const winner = makeUser(1000);
   const loser = makeUser(1000);
 

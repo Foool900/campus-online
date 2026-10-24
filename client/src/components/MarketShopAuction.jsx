@@ -72,6 +72,7 @@ export default function MarketShopAuction() {
       load();
     } catch (e) {
       if (e.code === 'COIN_INSUFFICIENT') setErr('金币不足：冻结差额不足');
+      else if (e.code === 'AUCTION_TERM_CLOSED') { load(); setErr(e.message || '该期竞拍已截止'); } // 时钟偏移：先刷新拿新 deadlineAt 让倒计时归零、按钮 disabled，再补提示
       else setErr(e.message);
     } finally {
       setBusyShopId(null);

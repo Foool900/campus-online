@@ -6,7 +6,7 @@ process.env.DB_PATH = ':memory:';
 const { db, initDb, nowIso } = await import('../db.js');
 const { config } = await import('../config.js');
 const { systemAccountId } = await import('../treasury.js');
-const { createSession, ensureMarketShops, bidShop, settleShopTerms, broadcast, listBroadcasts } = await import('../routes/market.js');
+const { createSession, ensureMarketShops, bidShop, settleShopTerms, broadcast, listBroadcasts, auctionTerm, isoWeekOf } = await import('../routes/market.js');
 
 initDb();
 
@@ -38,9 +38,15 @@ function firstShop() {
   return db.prepare('SELECT * FROM market_shops ORDER BY id LIMIT 1').get();
 }
 
+// 未来期次（相对当期 deadlineAt 偏移若干周）：bidShop 现在校验截止时间，过期期会被拒绝
+function futureTermWeek(weeksAhead = 0) {
+  const { deadlineAt } = auctionTerm();
+  return isoWeekOf(new Date(Date.parse(deadlineAt) + weeksAhead * 7 * 86400000));
+}
+
 test('店铺租金：50/50 拆分、winner 3 条流水顺序正确、未中标全额退、总金币 −sinkPart', () => {
   const shop = firstShop();
-  const termWeek = '2026-W01';
+  const termWeek = futureTermWeek(0);
   const winner = makeUser(1000);
   const loser = makeUser(1000);
 
@@ -76,7 +82,7 @@ test('店铺租金：50/50 拆分、winner 3 条流水顺序正确、未中标�
 
 test('店铺租金：重复 settle 不重复扣', () => {
   const shop = firstShop();
-  const termWeek = '2026-W02';
+  const termWeek = futureTermWeek(1);
   const winner = makeUser(1000);
   const loser = makeUser(1000);
   bidShop(winner, shop.id, termWeek, 200);
@@ -142,7 +148,7 @@ test('喇叭列表：ASC 排序 + 昵称 + fee/limit/myCount；myCount 含 remov
 
 test('店铺租金回滚：transfer 后 ledger 冲突，term/frozen/SYSTEM 全回滚', () => {
   const shop = firstShop();
-  const termWeek = '2026-W03';
+  const termWeek = futureTermWeek(2);
   const winner = makeUser(1000);
   bidShop(winner, shop.id, termWeek, 200);
 

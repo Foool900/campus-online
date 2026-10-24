@@ -6,7 +6,7 @@ process.env.DB_PATH = ':memory:';
 const { db, initDb, nowIso } = await import('../db.js');
 const { ensureSystemAccount, systemAccountId } = await import('../treasury.js');
 const { payCoin } = await import('../coin.js');
-const { createItem, bidShop, createBargain, buyItem } = await import('../routes/market.js');
+const { createItem, bidShop, createBargain, buyItem, auctionTerm } = await import('../routes/market.js');
 
 initDb();
 
@@ -34,7 +34,7 @@ test('pay 可划给 SYSTEM（accountOf 能查到它）', () => {
 test('SYSTEM 不能挂单/参拍/砍价/购买', () => {
   const sysId = systemAccountId();
   assert.equal(createItem(sysId, { sessionId: 1, title: 'x', priceCoin: 10 }).status, 403);
-  assert.equal(bidShop(sysId, 1, '2026-W01', 100).status, 403);
+  assert.equal(bidShop(sysId, 1, auctionTerm().termWeek, 100).status, 403);
   assert.equal(createBargain(sysId, 1, 50).status, 403);
   assert.equal(buyItem(sysId, 1).status, 403);
 });
