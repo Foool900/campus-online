@@ -24,6 +24,9 @@ export default function CoOnlinePage() {
   const [groupSelected, setGroupSelected] = useState(new Set());
   const [showManage, setShowManage] = useState(false);
   const [renameName, setRenameName] = useState('');
+  const [showDissolve, setShowDissolve] = useState(false);
+  const [dissolving, setDissolving] = useState(false);
+  const [dissolveError, setDissolveError] = useState('');
 
   const searchTimer = useRef(null);
 
@@ -179,16 +182,21 @@ export default function CoOnlinePage() {
   };
 
   const dissolveGroup = async () => {
-    if (!selected || !window.confirm('确定解散该群聊？此操作不可恢复')) return;
+    if (!selected || dissolving) return;
+    setDissolving(true);
+    setDissolveError('');
     try {
       await api.dissolveGroup(selected.id);
+      setShowDissolve(false);
+      setShowManage(false);
       setSelected(null);
       setMobileView('list');
-      setShowManage(false);
       setMsg('已解散群聊');
       refresh();
     } catch (e) {
-      setError(e.message || '解散失败');
+      setDissolveError(e.message || '解散失败');
+    } finally {
+      setDissolving(false);
     }
   };
 
@@ -363,7 +371,22 @@ export default function CoOnlinePage() {
             </div>
             <div className="form-actions" style={{ marginTop: 10 }}>
               <button className="btn ghost" onClick={() => setShowManage(false)}>关闭</button>
-              <button className="btn danger" onClick={dissolveGroup}>解散群聊</button>
+              <button className="btn danger" onClick={() => { setDissolveError(''); setShowDissolve(true); }}>解散群聊</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 解散群聊确认弹窗（危险操作：仅「取消」可关闭，遮罩/ESC 不响应） */}
+      {showDissolve && selected && (
+        <div className="modal-overlay" style={{ zIndex: 110 }}>
+          <div className="modal-card">
+            <h3>⚠️ 解散群聊</h3>
+            <p className="modal-sub">确定解散该群聊？此操作不可恢复</p>
+            {dissolveError && <div className="form-error">{dissolveError}</div>}
+            <div className="form-actions">
+              <button className="btn ghost" disabled={dissolving} onClick={() => { setShowDissolve(false); setDissolveError(''); }}>取消</button>
+              <button className="btn danger" disabled={dissolving} onClick={dissolveGroup}>{dissolving ? '解散中…' : '解散群聊'}</button>
             </div>
           </div>
         </div>
