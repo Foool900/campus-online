@@ -29,6 +29,7 @@ import conversationsRouter from './routes/conversations.js';
 import adminRouter from './routes/admin.js';
 import { requireAuth, getSessionUser } from './auth.js';
 import { triggerAchievement } from './achievements.js';
+import errorHandler from './error-handler.js';
 
 // 初始化数据库表结构与种子数据（仅在空库时写入）
 initDb();
@@ -110,14 +111,8 @@ if (fs.existsSync(clientDist)) {
   console.warn('[server] 未找到 client/dist（前端尚未构建）。开发模式请用 npm run dev；部署前请先 npm run build。');
 }
 
-// 统一错误处理
-app.use((err, req, res, next) => {
-  if (err && err.type === 'entity.too.large') {
-    return res.status(413).json({ error: '文件过大' });
-  }
-  console.error('[server] 未处理错误:', err);
-  res.status(500).json({ error: '服务器内部错误' });
-});
+// 统一错误处理（4xx 透传业务文案，5xx 兜底不泄露内部信息）
+app.use(errorHandler);
 
 function convRoom(type, id) {
   return type === 'activity' ? `post:${id}` : type === 'chat' ? `channel:${id}` : `${type}:${id}`;
