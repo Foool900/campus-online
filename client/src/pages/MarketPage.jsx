@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
+import MarketBargainInbox from '../components/MarketBargainInbox.jsx';
 
 const TYPE_LABELS = { normal: '普通', blindbox: '盲盒', flash_sale: '秒杀' };
 const STALL_STATUS = { available: '空', reserved: '预留', occupied: '营业', released: '已撤', expired: '到期' };
@@ -179,6 +180,9 @@ export default function MarketPage() {
           </div>
         </div>
       ))}
+
+      {/* 卖家砍价收件箱 */}
+      <MarketBargainInbox open={open} sessionId={sessionId} onChanged={refresh} />
 
       {/* 我的订单 */}
       <div className="tabs" style={{ margin: '12px 0 10px' }}><span style={{ fontWeight: 600 }}>📦 我买到的</span></div>
