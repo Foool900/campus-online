@@ -258,7 +258,9 @@ export function createItem(userId, { sessionId, title, description, priceCoin, t
   if (!t) return { error: '标题不能为空', status: 400 };
   if (t.length > 60) return { error: '标题过长（最多 60 字）', status: 400 };
   if (!Number.isInteger(price) || price <= 0) return { error: '价格必须为正整数金币', status: 400 };
+  if (!Number.isInteger(stock) || stock <= 0) return { error: '库存必须为正整数', status: 400 };
   if (!['normal', 'blindbox', 'flash_sale'].includes(type)) return { error: '商品类型无效', status: 400 };
+  if (type === 'blindbox' && stock !== 1) return { error: '盲盒库存必须为 1', status: 400 };
   if (containsSensitiveWord(t) || containsSensitiveWord((description || '').toString())) {
     return { error: '内容包含违规词，请修改', code: 'SENSITIVE_CONTENT', status: 400 };
   }

@@ -116,3 +116,30 @@ test('盲盒上架保证金不足：listItem 返回 code=COIN_INSUFFICIENT', () 
   assert.equal(l.code, 'COIN_INSUFFICIENT');
   assert.equal(l.status, 400);
 });
+
+test('createItem 校验 stock 正整数 + 盲盒强制单件', () => {
+  const sid = openSession();
+  const seller = makeUser();
+
+  // 缺失 → 默认 1 通过
+  const def = createItem(seller, { sessionId: sid, title: '默认库存', priceCoin: 10 });
+  assert.equal(def.error, undefined);
+  assert.equal(db.prepare('SELECT stock FROM market_items WHERE id=?').get(def.itemId).stock, 1);
+
+  // 非法 stock：0 / -1 / 1.5 / "3" 都拒绝
+  for (const bad of [0, -1, 1.5, '3']) {
+    const r = createItem(seller, { sessionId: sid, title: '坏库存', priceCoin: 10, stock: bad });
+    assert.equal(r.status, 400, `stock=${bad} 应被拒绝`);
+    assert.equal(r.error, '库存必须为正整数');
+  }
+
+  // 正整数通过并落库
+  const ok = createItem(seller, { sessionId: sid, title: '多件', priceCoin: 10, stock: 5 });
+  assert.equal(ok.error, undefined);
+  assert.equal(db.prepare('SELECT stock FROM market_items WHERE id=?').get(ok.itemId).stock, 5);
+
+  // 盲盒强制 stock=1，绕过前端传 5 被拒
+  const bb = createItem(seller, { sessionId: sid, title: '盲盒多件', priceCoin: 10, type: 'blindbox', stock: 5 });
+  assert.equal(bb.status, 400);
+  assert.equal(bb.error, '盲盒库存必须为 1');
+});
