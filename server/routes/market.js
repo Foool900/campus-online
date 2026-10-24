@@ -879,6 +879,32 @@ export function resolveDispute(adminId, disputeId, outcome) {
   return { ok: true };
 }
 
+// 买家评价卖家（1-5 星），completed 后 rateWindowDays 天内可评，幂等 (order_id,'rating',seller_id)
+export function rateOrder(buyerId, orderId, rating) {
+  const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(orderId);
+  if (!order) return { error: '订单不存在', code: 'ORDER_NOT_FOUND', status: 404 };
+  if (order.buyer_id !== buyerId) return { error: '不是你的订单', code: 'NOT_BUYER', status: 403 };
+  if (order.status !== 'completed') return { error: '订单未完成，暂不可评价', code: 'ORDER_NOT_COMPLETED', status: 400 };
+  const deadline = new Date(new Date(order.completed_at).getTime() + cfg('rateWindowDays') * 86400000);
+  if (deadline.getTime() < Date.now()) return { error: '已超过评价期限', code: 'RATE_WINDOW_EXPIRED', status: 400 };
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return { error: '评分需为 1-5 的整数', code: 'INVALID_RATING', status: 400 };
+
+  const r = runTx(() => {
+    try {
+      // 事件 user_id = 卖家（被评者）；UNIQUE(order_id,event,user_id) 拦截重复 → 409
+      db.prepare("INSERT INTO market_reputation_events (user_id, order_id, event, rating, created_at) VALUES (?, ?, 'rating', ?, ?)")
+        .run(order.seller_id, orderId, rating, nowIso());
+    } catch (e) {
+      if (String(e.message).includes('UNIQUE')) throwBiz('ALREADY_RATED', '你已评价过该订单', 409);
+      throw e;
+    }
+    recomputeReputation(order.seller_id);
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
 // 重算卖家信誉（实时聚合，基于 market_orders 状态 + market_reputation_events 事件）
 export function recomputeReputation(sellerId) {
   const orders = db.prepare("SELECT status, COUNT(*) AS c FROM market_orders WHERE seller_id=? AND status IN ('completed','cancelled','refunded') GROUP BY status").all(sellerId);
@@ -1221,6 +1247,12 @@ router.post('/market/orders/:id/cancel', requireRole('student', 'admin'), (req, 
 
 router.post('/market/orders/:id/open', requireRole('student', 'admin'), (req, res) => {
   const r = openBlindbox(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/orders/:id/rate', requireRole('student', 'admin'), (req, res) => {
+  const r = rateOrder(req.user.id, Number(req.params.id), req.body.rating);
   if (r.error) return res.status(r.status).json({ error: r.error });
   res.json(r);
 });

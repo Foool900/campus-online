@@ -5,7 +5,7 @@ process.env.DB_PATH = ':memory:';
 
 const { db, initDb, nowIso } = await import('../db.js');
 const {
-  createSession, createItem, listItem, buyItem, openBlindbox, createDispute, resolveDispute, grabStall, confirmStall, recomputeReputation,
+  createSession, createItem, listItem, buyItem, openBlindbox, createDispute, resolveDispute, grabStall, confirmStall, recomputeReputation, rateOrder,
 } = await import('../routes/market.js');
 
 initDb();
@@ -180,4 +180,76 @@ test('Step B: risky（10 completed + 5 rating=1 + 2 dispute_lost）→ 58 / risk
   close(r.dispute_lost_rate, 0.2);
   assert.equal(r.score, 58);
   assert.equal(r.level, 'risky');
+});
+
+// ---- Step C：rate 接口 helpers ----
+function mkOrder(sellerId, { status = 'completed', completedAt = nowIso() } = {}) {
+  const sid = openSession();
+  const itemId = insertItem(sellerId, sid);
+  const buyerId = makeUser(0);
+  const info = db.prepare("INSERT INTO market_orders (item_id, buyer_id, seller_id, type, price_coin, fee_coin, status, completed_at, created_at) VALUES (?, ?, ?, 'normal', 100, 0, ?, ?, ?)")
+    .run(itemId, buyerId, sellerId, status, completedAt, nowIso());
+  return { orderId: Number(info.lastInsertRowid), sellerId, buyerId };
+}
+function ratingCount(sellerId, orderId) {
+  return db.prepare("SELECT COUNT(*) AS c FROM market_reputation_events WHERE user_id=? AND order_id=? AND event='rating'").get(sellerId, orderId).c;
+}
+
+test('Step C: 正常评价 → 写 1 条 rating 事件 + good_rate 变化', () => {
+  const seller = makeUser(0);
+  const { orderId, buyerId } = mkOrder(seller);
+  const r = rateOrder(buyerId, orderId, 5);
+  assert.equal(r.ok, true);
+  assert.equal(ratingCount(seller, orderId), 1);
+  // 0 评价 good_rate=0.5 → 1 条 5 星后 (1+5)/(1+10)=6/11
+  close(repOf(seller).good_rate, 6 / 11);
+});
+
+test('Step C: 重复评价 → 409 ALREADY_RATED，事件仍 1 条，reputations 不变', () => {
+  const seller = makeUser(0);
+  const { orderId, buyerId } = mkOrder(seller);
+  assert.equal(rateOrder(buyerId, orderId, 5).ok, true);
+  const before = repOf(seller);
+  const r2 = rateOrder(buyerId, orderId, 4);
+  assert.equal(r2.code, 'ALREADY_RATED');
+  assert.equal(r2.status, 409);
+  assert.equal(ratingCount(seller, orderId), 1);
+  assert.equal(repOf(seller).good_rate, before.good_rate);
+});
+
+test('Step C: 超 30 天 → 400 RATE_WINDOW_EXPIRED', () => {
+  const seller = makeUser(0);
+  const past = new Date(Date.now() - 31 * 86400000).toISOString();
+  const { orderId, buyerId } = mkOrder(seller, { completedAt: past });
+  const r = rateOrder(buyerId, orderId, 5);
+  assert.equal(r.code, 'RATE_WINDOW_EXPIRED');
+  assert.equal(r.status, 400);
+});
+
+test('Step C: 非买家评价 → 403 NOT_BUYER', () => {
+  const seller = makeUser(0);
+  const { orderId } = mkOrder(seller);
+  const other = makeUser(0);
+  const r = rateOrder(other, orderId, 5);
+  assert.equal(r.code, 'NOT_BUYER');
+  assert.equal(r.status, 403);
+});
+
+test('Step C: 订单未完成（paid_escrow）→ 400 ORDER_NOT_COMPLETED', () => {
+  const seller = makeUser(0);
+  const { orderId, buyerId } = mkOrder(seller, { status: 'paid_escrow' });
+  const r = rateOrder(buyerId, orderId, 5);
+  assert.equal(r.code, 'ORDER_NOT_COMPLETED');
+  assert.equal(r.status, 400);
+});
+
+test('Step C: rating 非法（0/6/1.5/"3"）→ 400 INVALID_RATING', () => {
+  const seller = makeUser(0);
+  const { orderId, buyerId } = mkOrder(seller);
+  for (const bad of [0, 6, 1.5, '3']) {
+    const r = rateOrder(buyerId, orderId, bad);
+    assert.equal(r.code, 'INVALID_RATING', `rating=${bad} 应被拒绝`);
+    assert.equal(r.status, 400);
+  }
+  assert.equal(ratingCount(seller, orderId), 0);
 });

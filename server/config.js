@@ -56,6 +56,7 @@ export const config = {
     // 信誉
     reputationBase: 70,
     reputationProtectOrders: 5,
+    rateWindowDays: 30,        // 订单完成后可评价天数
     // 盲盒
     blindboxDepositRatio: 0.8,  // 保证金 ≥ 80% 标价
     blindboxMinValueRatio: 0.1, // 保底 ≥ 10% 标价
