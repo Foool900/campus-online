@@ -1137,18 +1137,25 @@ export function settleDueShopTerms(now) {
 // 路由
 // ============================================================
 
+// 运行时配置快照（供 /market/session 返回给前端）；比率均走 cfg() 以支持 market_configs 覆盖
+export function marketSessionConfig() {
+  return {
+    depositCoin: cfg('depositCoin'),
+    broadcastFee: cfg('broadcast_fee') ?? 0,
+    flashSaleBudget: cfg('flashSaleBudget'),
+    tradeFeeRate: cfg('tradeFeeRate') ?? config.coin.tradeFeeRate,
+    blindboxDepositRatio: cfg('blindboxDepositRatio'),
+    blindboxMinValueRatio: cfg('blindboxMinValueRatio'),
+  };
+}
+
 router.get('/market/session', (req, res) => {
   const session = currentSession();
   res.json({
     session,
     serverTime: nowIso(),
     treasury: getSystemBalance(),
-    config: {
-      depositCoin: cfg('depositCoin'),
-      broadcastFee: cfg('broadcast_fee') ?? 0,
-      flashSaleBudget: cfg('flashSaleBudget'),
-      tradeFeeRate: cfg('tradeFeeRate') ?? config.coin.tradeFeeRate,
-    },
+    config: marketSessionConfig(),
   });
 });
 
