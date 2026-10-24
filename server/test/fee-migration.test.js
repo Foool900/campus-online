@@ -24,6 +24,9 @@ function acct(id) {
 function sysCoin() {
   return db.prepare('SELECT coin FROM users WHERE id=?').get(systemAccountId()).coin;
 }
+function totalCoin() {
+  return db.prepare('SELECT COALESCE(SUM(coin),0) + COALESCE(SUM(frozen_coin),0) AS t FROM users').get().t;
+}
 function openSession() {
   const r = createSession(new Date(Date.now() + 3600000).toISOString());
   const sid = r.session.id;
@@ -43,23 +46,26 @@ function listedItem(seller, sid, stallId, opts = {}) {
   return r.itemId;
 }
 
-test('手续费迁移：买家 −price、卖家 +(price−fee)、SYSTEM +fee（三方守恒）', () => {
+test('三方守恒：买家 −price（frozen 归零）、卖家 +(price−fee)、SYSTEM +fee、总金币不变', () => {
   const sid = openSession();
   const seller = makeUser(1000);
   const buyer = makeUser(1000);
-  const stallId = occupiedStall(seller, sid); // 冻结 5 押金
+  const stallId = occupiedStall(seller, sid);
   const itemId = listedItem(seller, sid, stallId, { price: 100 });
 
   const fee = Math.floor(100 * config.coin.tradeFeeRate);
-  const sellerCoinBefore = acct(seller).coin; // 995
+  const sellerCoinBefore = acct(seller).coin;
   const sysBefore = sysCoin();
 
   const b = buyItem(buyer, itemId);
+  const totalBefore = totalCoin();
   assert.equal(confirmOrder(buyer, b.orderId).error, undefined);
 
-  assert.equal(acct(buyer).coin, 1000 - 100); // 买家 -100
-  assert.equal(acct(seller).coin, sellerCoinBefore + (100 - fee)); // 卖家 +净额
-  assert.equal(sysCoin(), sysBefore + fee); // SYSTEM +fee
+  assert.equal(acct(buyer).coin, 1000 - 100);
+  assert.equal(acct(buyer).frozenCoin, 0); // 冻结归零
+  assert.equal(acct(seller).coin, sellerCoinBefore + (100 - fee));
+  assert.equal(sysCoin(), sysBefore + fee);
+  assert.equal(totalCoin(), totalBefore); // 总金币不变（transfer 守恒，不再 sink 销毁）
 });
 
 test('重复结算：同一订单 confirmOrder 两次，三方余额不变', () => {
@@ -92,7 +98,6 @@ test('事务回滚：手续费 ledger 写入失败，货款+手续费全部回�
   const sysId = systemAccountId();
 
   const b = buyItem(buyer, itemId);
-  // 预置一条冲突的 ledger 幂等键，让 confirmOrder 里手续费的 writeLedger 抛 UNIQUE 失败
   db.prepare("INSERT INTO market_ledger (session_id, biz_type, biz_id, op, user_id, counterparty_id, amount, coin_tx_id, idempotency_key, created_at) VALUES (?, 'fee_treasury', ?, 'treasury_in', ?, ?, ?, NULL, ?, ?)")
     .run(sid, b.orderId, buyer, sysId, Math.floor(100 * config.coin.tradeFeeRate), `fee_treasury:${b.orderId}:ledger`, nowIso());
 
@@ -101,9 +106,31 @@ test('事务回滚：手续费 ledger 写入失败，货款+手续费全部回�
   const sysC = sysCoin();
 
   const r = confirmOrder(buyer, b.orderId);
-  assert.equal(r.code, 'SQLITE_CONSTRAINT_UNIQUE'); // ledger 唯一冲突
+  assert.equal(r.code, 'SQLITE_CONSTRAINT_UNIQUE');
   assert.equal(db.prepare('SELECT status FROM market_orders WHERE id=?').get(b.orderId).status, 'paid_escrow'); // 订单未完成
-  assert.equal(acct(buyer).coin, buyerCoin); // 全部回滚
+  assert.equal(acct(buyer).coin, buyerCoin);
   assert.equal(acct(seller).coin, sellerCoin);
   assert.equal(sysCoin(), sysC);
+});
+
+test('buyer 侧流水：confirmOrder 事务内新增恰好 2 条 transfer（net→fee），无 refund', () => {
+  const sid = openSession();
+  const seller = makeUser(1000);
+  const buyer = makeUser(1000);
+  const stallId = occupiedStall(seller, sid);
+  const itemId = listedItem(seller, sid, stallId, { price: 100 });
+
+  const b = buyItem(buyer, itemId); // 这里有一条 freeze 流水
+  const maxIdBefore = db.prepare('SELECT COALESCE(MAX(id),0) AS m FROM coin_transactions').get().m;
+
+  confirmOrder(buyer, b.orderId);
+
+  const newTx = db.prepare('SELECT * FROM coin_transactions WHERE id > ? AND from_user_id = ? ORDER BY id ASC').all(maxIdBefore, buyer);
+  assert.equal(newTx.length, 2); // 恰好 2 条
+  assert.equal(newTx.filter((t) => t.type === 'transfer').length, 2);
+  assert.equal(newTx.filter((t) => t.type === 'refund').length, 0); // 无 refund
+
+  const fee = Math.floor(100 * config.coin.tradeFeeRate);
+  assert.equal(newTx[0].amount, 100 - fee); // 先 net 给卖家
+  assert.equal(newTx[1].amount, fee);       // 后 fee 给 SYSTEM
 });

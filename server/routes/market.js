@@ -496,12 +496,10 @@ export function confirmOrder(buyerId, orderId) {
       writeLedger({ sessionId: itemSessionId, bizType: 'order_charge', bizId: orderId, op: 'charge', userId: order.seller_id, counterpartyId: buyerId, amount: net, coinTxId: t.txId, idempotencyKey: `${key}:ledger:charge` });
     }
     if (fee > 0) {
-      const rf = applyCoinRaw({ fromUserId: buyerId, amount: fee, type: 'refund', relatedType: 'market_order', relatedId: orderId, idempotencyKey: `${key}:fee-unfreeze` });
-      if (rf.error) throwBiz(rf.code, rf.error, rf.status);
       const feeKey = `fee_treasury:${orderId}`;
-      const p = applyCoinRaw({ fromUserId: buyerId, toUserId: systemAccountId(), amount: fee, type: 'pay', relatedType: 'market_order', relatedId: orderId, idempotencyKey: feeKey });
-      if (p.error) throwBiz(p.code, p.error, p.status);
-      writeLedger({ sessionId: itemSessionId, bizType: 'fee_treasury', bizId: orderId, op: 'treasury_in', userId: buyerId, counterpartyId: systemAccountId(), amount: fee, coinTxId: p.txId, idempotencyKey: `${feeKey}:ledger` });
+      const t = applyCoinRaw({ fromUserId: buyerId, toUserId: systemAccountId(), amount: fee, type: 'transfer', relatedType: 'market_order', relatedId: orderId, idempotencyKey: feeKey });
+      if (t.error) throwBiz(t.code, t.error, t.status);
+      writeLedger({ sessionId: itemSessionId, bizType: 'fee_treasury', bizId: orderId, op: 'treasury_in', userId: buyerId, counterpartyId: systemAccountId(), amount: fee, coinTxId: t.txId, idempotencyKey: `${feeKey}:ledger` });
     }
 
     // 商品：单件转 sold；多件判断 sold_count
@@ -672,12 +670,10 @@ export function openBlindbox(buyerId, orderId) {
       writeLedger({ sessionId: itemSessionId, bizType: 'order_charge', bizId: orderId, op: 'charge', userId: order.seller_id, counterpartyId: buyerId, amount: net, coinTxId: t.txId, idempotencyKey: `${key}:ledger:charge` });
     }
     if (fee > 0) {
-      const rf = applyCoinRaw({ fromUserId: buyerId, amount: fee, type: 'refund', relatedType: 'market_order', relatedId: orderId, idempotencyKey: `${key}:fee-unfreeze` });
-      if (rf.error) throwBiz(rf.code, rf.error, rf.status);
       const feeKey = `fee_treasury:${orderId}`;
-      const p = applyCoinRaw({ fromUserId: buyerId, toUserId: systemAccountId(), amount: fee, type: 'pay', relatedType: 'market_order', relatedId: orderId, idempotencyKey: feeKey });
-      if (p.error) throwBiz(p.code, p.error, p.status);
-      writeLedger({ sessionId: itemSessionId, bizType: 'fee_treasury', bizId: orderId, op: 'treasury_in', userId: buyerId, counterpartyId: systemAccountId(), amount: fee, coinTxId: p.txId, idempotencyKey: `${feeKey}:ledger` });
+      const t = applyCoinRaw({ fromUserId: buyerId, toUserId: systemAccountId(), amount: fee, type: 'transfer', relatedType: 'market_order', relatedId: orderId, idempotencyKey: feeKey });
+      if (t.error) throwBiz(t.code, t.error, t.status);
+      writeLedger({ sessionId: itemSessionId, bizType: 'fee_treasury', bizId: orderId, op: 'treasury_in', userId: buyerId, counterpartyId: systemAccountId(), amount: fee, coinTxId: t.txId, idempotencyKey: `${feeKey}:ledger` });
     }
     db.prepare("UPDATE market_items SET status='sold', sold_at=? WHERE id=? AND stock=1").run(nowIso(), order.item_id);
     return true;
