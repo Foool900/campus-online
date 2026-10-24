@@ -27,7 +27,7 @@ router.get('/friends/search', (req, res) => {
   if (!q) return res.json([]);
   const limit = Math.min(Number(req.query.limit) || 20, 50);
   const rows = db
-    .prepare('SELECT id, nickname, avatar, college FROM users WHERE nickname LIKE ? AND id != ? ORDER BY id ASC LIMIT ?')
+    .prepare("SELECT id, nickname, avatar, college FROM users WHERE nickname LIKE ? AND id != ? AND role != 'system' ORDER BY id ASC LIMIT ?")
     .all(`%${q}%`, req.user.id, limit);
   res.json(rows.map((r) => ({ ...mapUser(r), friendStatus: friendStatus(req.user.id, r.id) })));
 });

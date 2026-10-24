@@ -10,13 +10,14 @@ import { db, nowIso } from './db.js';
 //   transfer 转移：frozen_coin(发布者) → coin(接取者)
 //   refund   退回：frozen_coin → coin
 //   sink     回收：coin 销毁（手续费/租金/发布费）
+//   pay      直接划转：coin(付款方) → coin(收款方)（不经过冻结）
 //
 // 约束：
 //   - 所有金币增减必须走本文件，禁止在别处直接 UPDATE users 的金币字段。
 //   - 每个流转带幂等键 idempotencyKey，重复调用不会重复划转（coin_transactions 唯一约束兜底）。
 // ============================================================
 
-const VALID_TYPES = ['mint', 'freeze', 'transfer', 'refund', 'sink'];
+const VALID_TYPES = ['mint', 'freeze', 'transfer', 'refund', 'sink', 'pay'];
 
 function accountOf(userId) {
   if (!Number.isInteger(userId) || userId <= 0) return null;
@@ -78,6 +79,12 @@ function writeCoin({
     if (from.frozenCoin < amt) return { error: '冻结金币不足', code: 'COIN_INSUFFICIENT_FROZEN', status: 400 };
     db.prepare('UPDATE users SET frozen_coin = frozen_coin - ? WHERE id = ?').run(amt, fromUserId);
     db.prepare('UPDATE users SET coin = coin + ? WHERE id = ?').run(amt, toUserId);
+  } else if (type === 'pay') {
+    if (!from) return { error: '付款方不存在', code: 'COIN_USER_NOT_FOUND', status: 404 };
+    if (!to) return { error: '收款方不存在', code: 'COIN_USER_NOT_FOUND', status: 404 };
+    if (from.coin < amt) return { error: '金币不足', code: 'COIN_INSUFFICIENT', status: 400 };
+    db.prepare('UPDATE users SET coin = coin - ? WHERE id = ?').run(amt, fromUserId);
+    db.prepare('UPDATE users SET coin = coin + ? WHERE id = ?').run(amt, toUserId);
   }
 
   const info = db
@@ -124,3 +131,6 @@ export const refundCoin = (fromUserId, amount, opts = {}) =>
 
 export const transferCoin = (fromUserId, toUserId, amount, opts = {}) =>
   applyCoinTransaction({ fromUserId, toUserId, amount, type: 'transfer', ...opts });
+
+export const payCoin = (fromUserId, toUserId, amount, opts = {}) =>
+  applyCoinTransaction({ fromUserId, toUserId, amount, type: 'pay', ...opts });

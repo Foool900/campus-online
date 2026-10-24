@@ -54,6 +54,12 @@ function throwBiz(code, message, status = 400) {
   throw e;
 }
 
+function assertNotSystem(userId) {
+  const u = db.prepare('SELECT role FROM users WHERE id=?').get(userId);
+  if (u && u.role === 'system') return { error: '系统账号不可操作市场', status: 403 };
+  return null;
+}
+
 function runTx(fn) {
   try {
     return { value: db.transaction(fn)() };
@@ -237,6 +243,8 @@ export function releaseStall(userId, stallId) {
 // ============================================================
 
 export function createItem(userId, { sessionId, title, description, priceCoin, type = 'normal', stock = 1, contentJson = null, valueCoin = null }) {
+  const sys = assertNotSystem(userId);
+  if (sys) return sys;
   const session = getSession(sessionId);
   if (!session) return { error: '期次不存在', status: 404 };
   const t = (title || '').toString().trim();
@@ -278,6 +286,8 @@ function mapItem(row) {
 
 // 上架（draft → active，绑定摊位）
 export function listItem(userId, itemId, { stallId = null, shopId = null }) {
+  const sys = assertNotSystem(userId);
+  if (sys) return sys;
   const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(itemId);
   if (!item) return { error: '商品不存在', status: 404 };
   if (item.seller_id !== userId) return { error: '不是你的商品', status: 403 };
@@ -335,6 +345,8 @@ export function removeItem(userId, itemId) {
 // ============================================================
 
 export function buyItem(buyerId, itemId) {
+  const sys = assertNotSystem(buyerId);
+  if (sys) return sys;
   const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(itemId);
   if (!item) return { error: '商品不存在', status: 404 };
   if (item.seller_id === buyerId) return { error: '不能购买自己的商品', status: 400 };
@@ -495,6 +507,8 @@ export function refundOrder(orderId) {
 // ============================================================
 
 export function createBargain(buyerId, itemId, offerCoin) {
+  const sys = assertNotSystem(buyerId);
+  if (sys) return sys;
   const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(itemId);
   if (!item) return { error: '商品不存在', status: 404 };
   if (item.seller_id === buyerId) return { error: '不能砍自己的商品', status: 400 };
@@ -626,6 +640,8 @@ export function openBlindbox(buyerId, orderId) {
 // ============================================================
 
 export function bidShop(userId, shopId, termWeek, amountCoin) {
+  const sys = assertNotSystem(userId);
+  if (sys) return sys;
   const amount = Number(amountCoin);
   if (!Number.isInteger(amount) || amount <= 0) return { error: '出价必须为正整数', status: 400 };
   const shop = db.prepare('SELECT * FROM market_shops WHERE id=?').get(shopId);

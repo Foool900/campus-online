@@ -14,7 +14,7 @@ router.get('/users/search', (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q) return res.json([]);
   const rows = db
-    .prepare('SELECT id, nickname, college, avatar, role, permissions FROM users WHERE nickname LIKE ? AND id != ? ORDER BY id ASC LIMIT 20')
+    .prepare("SELECT id, nickname, college, avatar, role, permissions FROM users WHERE nickname LIKE ? AND id != ? AND role != 'system' ORDER BY id ASC LIMIT 20")
     .all(`%${q}%`, req.user.id);
   res.json(rows.map((r) => ({ ...r, permissions: getUserPermissions(r) })));
 });

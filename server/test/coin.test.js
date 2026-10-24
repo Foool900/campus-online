@@ -12,6 +12,7 @@ const {
   freezeCoin,
   transferCoin,
   refundCoin,
+  payCoin,
 } = await import('../coin.js');
 
 initDb();
@@ -106,4 +107,29 @@ test('applyCoinRaw 可在外部 db.transaction 内组合', () => {
   assert.equal(r.ok, true);
   assert.equal(acct(u).coin, 90);
   assert.equal(acct(u).frozenCoin, 10);
+});
+
+test('pay：直接 coin 划转，守恒 + 幂等', () => {
+  const a = makeUser(100);
+  const b = makeUser(0);
+  const r = payCoin(a, b, 30, { idempotencyKey: 'c-pay-1' });
+  assert.equal(r.ok, true);
+  assert.equal(r.from.coin, 70);
+  assert.equal(r.to.coin, 30);
+  assert.equal(acct(a).coin, 70);
+  assert.equal(acct(b).coin, 30);
+
+  const r2 = payCoin(a, b, 30, { idempotencyKey: 'c-pay-1' });
+  assert.equal(r2.duplicate, true);
+  assert.equal(acct(a).coin, 70); // 不重复扣款
+  assert.equal(acct(b).coin, 30);
+});
+
+test('pay：余额不足被拒绝，无部分写入', () => {
+  const a = makeUser(10);
+  const b = makeUser(0);
+  const r = payCoin(a, b, 50, { idempotencyKey: 'c-pay-2' });
+  assert.equal(r.code, 'COIN_INSUFFICIENT');
+  assert.equal(acct(a).coin, 10);
+  assert.equal(acct(b).coin, 0);
 });

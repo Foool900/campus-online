@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { initDb, db, nowIso } from './db.js';
+import { ensureSystemAccount } from './treasury.js';
 import { seedIfEmpty, ensureWorldChannel, ensureAdmin, ensureAchievements } from './seed.js';
 import { bumpPresence, presenceList, bumpGlobalPresence } from './presence.js';
 import areasRouter from './routes/areas.js';
@@ -36,6 +37,7 @@ ensureWorldChannel();
 ensureAdmin();
 ensureAchievements();
 ensureMarketShops();
+ensureSystemAccount();
 if (seeded) {
   console.log('[db] 已写入种子数据：2 个校区 / 区域与频道 / 示例消息与帖子 / 成就');
 }

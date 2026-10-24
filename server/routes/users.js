@@ -26,7 +26,7 @@ router.get('/users/:id', (req, res) => {
   if (!Number.isInteger(id)) {
     return res.status(400).json({ error: '无效的用户 ID' });
   }
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const row = db.prepare("SELECT * FROM users WHERE id = ? AND role != 'system'").get(id);
   if (!row) {
     return res.status(404).json({ error: '用户不存在' });
   }
@@ -71,7 +71,7 @@ router.patch('/users/:id', (req, res) => {
 
 // GET /api/leaderboard —— 按经验值降序排行
 router.get('/leaderboard', (req, res) => {
-  const rows = db.prepare('SELECT * FROM users ORDER BY exp DESC, id ASC').all();
+  const rows = db.prepare("SELECT * FROM users WHERE role != 'system' ORDER BY exp DESC, id ASC").all();
   res.json(rows.map(mapUser));
 });
 
