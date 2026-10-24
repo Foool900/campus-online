@@ -5,7 +5,7 @@ process.env.DB_PATH = ':memory:';
 
 const { db, initDb, nowIso } = await import('../db.js');
 const {
-  createSession, createItem, listItem, buyItem, openBlindbox, createDispute, resolveDispute, grabStall, confirmStall, recomputeReputation, rateOrder,
+  createSession, createItem, listItem, buyItem, openBlindbox, createDispute, resolveDispute, grabStall, confirmStall, recomputeReputation, rateOrder, reputeLevel,
 } = await import('../routes/market.js');
 
 initDb();
@@ -252,4 +252,36 @@ test('Step C: rating 非法（0/6/1.5/"3"）→ 400 INVALID_RATING', () => {
     assert.equal(r.status, 400);
   }
   assert.equal(ratingCount(seller, orderId), 0);
+});
+
+// ---- Step D：边界 ----
+test('Step D: 保护期回溯 — 前 5 单好评 + 第 6 单差评，good_rate 用全历史 6 单算', () => {
+  const seller = makeUser(0);
+  buildOrders(seller, 5, 5); // 前 5 单全好评
+  buildOrders(seller, 1, 1); // 第 6 单差评
+  recomputeReputation(seller);
+  const r = repOf(seller);
+  // 全历史回溯：(5+5)/(6+10)=0.625；若只算第 6 单会是 5/11≈0.455
+  close(r.good_rate, 0.625);
+  assert.equal(r.order_count, 6);
+  assert.equal(r.score, 78);
+  assert.equal(r.level, 'regular');
+});
+
+test('Step D: level 边界（79/80/89/90 + 量级门槛）', () => {
+  assert.equal(reputeLevel(5, 79), 'regular');
+  assert.equal(reputeLevel(5, 80), 'trusted');
+  assert.equal(reputeLevel(5, 89), 'trusted');
+  assert.equal(reputeLevel(10, 90), 'trusted'); // score≥90 但 order_count<20 → 非 veteran
+  assert.equal(reputeLevel(20, 90), 'veteran'); // score≥90 且 order_count≥20
+  assert.equal(reputeLevel(4, 90), 'new');      // new 优先级最高
+  assert.equal(reputeLevel(5, 59), 'risky');    // <60 兜底
+});
+
+test('Step D: 删除卖家 → market_reputations 行被 ON DELETE CASCADE 删除', () => {
+  const seller = makeUser(0);
+  recomputeReputation(seller);
+  assert.ok(repOf(seller));
+  db.prepare('DELETE FROM users WHERE id=?').run(seller);
+  assert.equal(repOf(seller), undefined);
 });

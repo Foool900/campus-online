@@ -905,6 +905,15 @@ export function rateOrder(buyerId, orderId, rating) {
   return { ok: true };
 }
 
+// 信誉等级判定（纯函数，供聚合与边界测试复用）：顺序不可乱
+export function reputeLevel(orderCount, score) {
+  if (orderCount < 5) return 'new';
+  if (score >= 90 && orderCount >= 20) return 'veteran';
+  if (score >= 80) return 'trusted';
+  if (score >= 60) return 'regular';
+  return 'risky';
+}
+
 // 重算卖家信誉（实时聚合，基于 market_orders 状态 + market_reputation_events 事件）
 export function recomputeReputation(sellerId) {
   const orders = db.prepare("SELECT status, COUNT(*) AS c FROM market_orders WHERE seller_id=? AND status IN ('completed','cancelled','refunded') GROUP BY status").all(sellerId);
@@ -938,12 +947,7 @@ export function recomputeReputation(sellerId) {
     )));
   }
 
-  let level;
-  if (orderCount < 5) level = 'new';
-  else if (score >= 90 && orderCount >= 20) level = 'veteran';
-  else if (score >= 80) level = 'trusted';
-  else if (score >= 60) level = 'regular';
-  else level = 'risky';
+  const level = reputeLevel(orderCount, score);
 
   db.prepare(`
     INSERT INTO market_reputations (user_id, score, level, order_count, good_rate, completion_rate, cancel_rate, dispute_lost_rate, protected_orders, updated_at)
