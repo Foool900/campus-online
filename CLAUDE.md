@@ -30,7 +30,7 @@ Monorepo: Express 5 + Socket.IO backend in `server/`, React 19 + Vite frontend i
 ### Backend (`server/`)
 
 - `index.js` wires Express routes + Socket.IO, mounts every router under `/api`, serves `/uploads` statically, and (in production) serves `client/dist` with a BrowserRouter fallback to `index.html` for any non-`/api` GET.
-- `db.js` opens SQLite at `server/data/campus.db` (override with `DB_PATH`), WAL mode, `foreign_keys = ON`. Tables are created idempotently in `initDb()`, which also runs inline migrations (e.g. `messages` gains `conversation_type`/`conversation_id`, `users` gains `password_hash`/`role`/`available_exp`/`frozen_exp`). Timestamps are ISO strings via `nowIso()`.
+- `db.js` opens SQLite at `server/data/campus.db` (override with `DB_PATH`), WAL mode, `foreign_keys = ON`. Tables are created idempotently in `initDb()`, which also runs inline migrations (e.g. `messages` gains `conversation_type`/`conversation_id`, `users` gains `password_hash`/`role`/`coin`/`frozen_coin`). Timestamps are ISO strings via `nowIso()`.
 - `seed.js` seeds **only when `campuses` is empty** (`seedIfEmpty`); `ensureWorldChannel()` and `ensureAdmin()` run on every boot.
 - `routes/` = one file per resource. Handlers validate with `Number(...)` + `Number.isInteger(...)` and return `{ error, status }`-shaped errors in Chinese.
 
@@ -41,7 +41,7 @@ Token-based sessions replaced the old anonymous "reuse user by nickname" flow. *
 - `auth.js` (module): scrypt password hashing, 30-day session tokens in the `sessions` table, plus `requireAuth` and `requireRole(...)` middleware. `getSessionUser(token)` resolves a token to a user.
 - `index.js` mounts `authRouter` **before** a global `requireAuth`, so `/api/auth/*` is public and **everything else under `/api` requires a valid `Authorization: Bearer <token>`** (also accepted via `?token=`).
 - Socket.IO authenticates the same way: `io.use` checks `socket.handshake.auth.token` and rejects unauthenticated connections.
-- **Roles**: `member` (default) → `student` (granted when an admin approves a `verification`) → `admin`. Most REST write endpoints gate with `requireRole('student', 'admin')` (posting messages, todos, stickers, tasks). Admin is bootstrapped by `ensureAdmin()` — nickname from `ADMIN_NICKNAME` env or default `FOolish` — and can promote/demote admins and review `verifications` via `routes/verification.js` (`/api/admin`, `/api/verification/*`).
+- **Roles**: `member` (default) → `student` (granted when an admin approves a `verification`) → `admin`. Most REST write endpoints gate with `requireRole('student', 'admin')` (posting messages, stickers, tasks). Admin is bootstrapped by `ensureAdmin()` — nickname from `ADMIN_NICKNAME` env or default `FOolish` — and can promote/demote admins and review `verifications` via `routes/verification.js` (`/api/admin`, `/api/verification/*`).
 
 ### Unified message model (key invariant)
 
@@ -59,18 +59,21 @@ Token-based sessions replaced the old anonymous "reuse user by nickname" flow. *
 - The REST route handlers **and** the `message:send` socket handler both call `insertConversationMessage`; only the socket handler broadcasts `message:new` to the room.
 - Socket rooms: `channel:{id}`, `post:{id}`, and `{type}:{id}` for `direct`/`group`/`task`. `message:send` accepts the new `conversationType`/`conversationId` fields, falling back to the old `postId`/`channelId`. `join:conv`/`leave:conv` are the generic join/leave events.
 
-### Experience account (key invariant)
+### Experience + coin accounts (key invariant)
 
-`users` has three exp columns: `exp` (total, monotonic — drives level), `available_exp` (spendable), `frozen_exp` (held in escrow).
+Two separate accounts live on `users`:
 
-- **All exp changes MUST go through `server/exp.js`** (`freezeExp` / `transferExp` / `refundExp` / `grantExp`, or the lower-level `applyExpTransaction` / `applyExpRaw`). Never `UPDATE` the exp columns directly.
-- Every flow writes an `exp_transactions` row with a unique `idempotency_key` (repeating a call is a no-op).
-- `applyExpRaw` exists for callers already inside a `db.transaction()` (better-sqlite3 throws on nested transactions) — see `routes/todos.js`.
+- **经验 `exp`** — total, monotonic, drives level. Earn-only (never spent); tagged with a `source` (`behavior` / `story` / `admin`).
+- **金币 `coin` + `frozen_coin`** — spendable currency (task bounties now, market later).
+
+- **All exp grants MUST go through `server/exp.js`** (`grantExp` / `applyExpRaw`). **All coin changes MUST go through `server/coin.js`** (`mintCoin` / `freezeCoin` / `transferCoin` / `refundCoin` / `sinkCoin`, or the lower-level `applyCoinTransaction` / `applyCoinRaw`). Never `UPDATE` the exp/coin columns directly.
+- Every flow writes a ledger row with a unique `idempotency_key` (repeating a call is a no-op): exp → `exp_transactions`, coin → `coin_transactions`.
+- `applyExpRaw` / `applyCoinRaw` exist for callers already inside a `db.transaction()` (better-sqlite3 throws on nested transactions) — see `routes/tasks.js`.
 - Level formula `level = floor(exp / 100) + 1` is defined **only** in `server/config.js` (`levelOf`); the server returns `level` in user/wallet payloads, so the client does not reimplement it.
 
 ### Task system
 
-`routes/tasks.js` — tasks are `private` (personal memo, reward forced 0) or `public` (posted with a reward escrowed from the publisher). State machine: private `todo → done`; public `published → accepted → submitted → approved` (reject → `accepted` up to a cap; terminal states are `approved`/`terminated`/`expired`/`cancelled`). `expireOverdueTasks(io)` runs on boot and every 60s to auto-refund/expire overdue tasks. Full spec lives in **`TASKS.md`**.
+`routes/tasks.js` — tasks are `private` (personal memo, reward forced 0) or `public` (posted with a **coin** bounty escrowed from the publisher via `freezeCoin`). State machine: private `todo → done`; public `published → accepted → submitted → approved` (reject → `accepted` up to a cap; terminal states are `approved`/`terminated`/`expired`/`cancelled`). Completing a task grants **exp** (behavior source, daily-capped + idempotent). `expireOverdueTasks(io)` runs on boot and every 60s to auto-refund/expire overdue tasks. Full spec lives in **`TASKS.md`**.
 
 ### The "world channel" is a hidden area
 
@@ -91,7 +94,7 @@ Seed coordinates are in a **logical 1000×1900 space** (`server/seed.js`). `HeDa
 
 ### Duplicated logic to keep in sync
 
-- **Reward cap** `taskRewardCap(availableExp) = floor(min(availableExp * capRatio, capAbsolute))` is defined in `server/config.js` **and** re-implemented in `client/src/pages/TasksPage.jsx` (publish-form preview). The `config.reward` values (`capRatio`, `capAbsolute`, daily caps) are the single source of truth returned to clients via `GET /api/exp/config` — keep the client copy in sync when changing them.
+- **Reward cap** `taskRewardCap(coin) = floor(min(coin * capRatio, capAbsolute))` is defined in `server/config.js` **and** re-implemented in `client/src/pages/TasksPage.jsx` (publish-form preview). The `config.coin` values (`capRatio`, `capAbsolute`, daily caps) are the single source of truth returned to clients via `GET /api/coin/config` — keep the client copy in sync when changing them.
 - `config.js`'s own comment about a client-side `levelOf` copy is now stale — `levelOf` is server-only.
 
 ## Deployment

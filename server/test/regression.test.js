@@ -13,7 +13,7 @@ function makeUser() {
   seq += 1;
   const info = db
     .prepare(
-      "INSERT INTO users (nickname, college, avatar, exp, available_exp, frozen_exp, role, created_at) VALUES (?, '计算机', '🎓', 0, 0, 0, 'student', ?)"
+      "INSERT INTO users (nickname, college, avatar, exp, coin, frozen_coin, role, created_at) VALUES (?, '计算机', '🎓', 0, 0, 0, 'student', ?)"
     )
     .run(`回归用户${seq}`, nowIso());
   return Number(info.lastInsertRowid);

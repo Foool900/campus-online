@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, nowIso } from '../db.js';
 import { hashPassword, verifyPassword, createSession, destroySession, requireAuth, readToken, getSessionUser } from '../auth.js';
 import { levelOf } from '../config.js';
+import { triggerAchievement } from '../achievements.js';
 
 const router = Router();
 
@@ -12,13 +13,34 @@ function mapUser(row) {
     nickname: row.nickname,
     college: row.college,
     avatar: row.avatar,
-    exp: row.exp, // 累计经验 totalExp（保留旧字段名，兼容前端）
-    availableExp: row.available_exp,
-    frozenExp: row.frozen_exp,
+    exp: row.exp, // 累计经验，只增不减，决定等级
+    coin: row.coin,
+    frozenCoin: row.frozen_coin,
     level: levelOf(row.exp),
     role: row.role,
+    permissions: (() => {
+      try {
+        return JSON.parse(row.permissions || '[]');
+      } catch {
+        return [];
+      }
+    })(),
     createdAt: row.created_at,
   };
+}
+
+// 幂等触发成就，并通过 socket 通知该用户
+function notifyAchievement(req, userId, code) {
+  const ach = triggerAchievement(userId, code);
+  const io = req.app.get('io');
+  if (ach && io) {
+    io.to(`user:${userId}`).emit('achievement:unlocked', {
+      code: ach.code,
+      name: ach.name,
+      icon: ach.icon,
+      description: ach.description,
+    });
+  }
 }
 
 function validateCredential(nickname, password) {
@@ -49,6 +71,7 @@ router.post('/auth/register', (req, res) => {
     .prepare("INSERT INTO users (nickname, college, avatar, exp, role, password_hash, created_at) VALUES (?, ?, '🎓', 0, 'member', ?, ?)")
     .run(name, col, hashPassword(password), nowIso());
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+  notifyAchievement(req, user.id, 'EXP_001');
   res.status(201).json({ user: mapUser(user), token: createSession(user.id) });
 });
 
@@ -63,6 +86,7 @@ router.post('/auth/login', (req, res) => {
   if (!user) return res.status(404).json({ error: '用户不存在，请先注册' });
   if (!user.password_hash) return res.status(409).json({ error: '该账号还未设置密码，请先设置密码' });
   if (!verifyPassword(password, user.password_hash)) return res.status(401).json({ error: '密码错误' });
+  notifyAchievement(req, user.id, 'EXP_001');
   res.json({ user: mapUser(user), token: createSession(user.id) });
 });
 

@@ -13,6 +13,9 @@ import ActivityDetailPage from './pages/ActivityDetailPage.jsx';
 import TaskDetailPage from './pages/TaskDetailPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import CoOnlinePage from './pages/CoOnlinePage.jsx';
+import SignInPage from './pages/SignInPage.jsx';
+import MarketPage from './pages/MarketPage.jsx';
+import LotteryPage from './pages/LotteryPage.jsx';
 
 const TOKEN_KEY = 'campus_token';
 
@@ -72,6 +75,9 @@ export default function App() {
           <Routes>
             <Route path="/" element={null} />
             <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/signin" element={<SignInPage />} />
+            <Route path="/market" element={<MarketPage />} />
+            <Route path="/lottery" element={<LotteryPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/achievements" element={<AchievementsPage />} />
             <Route path="/profile" element={<ProfilePage />} />

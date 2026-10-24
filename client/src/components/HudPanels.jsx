@@ -61,6 +61,18 @@ const ICONS = {
       <path d="M5 2l1.5 3H9.5L11 2" />
     </>
   ),
+  coin: (
+    <>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5.5v5M5.8 6.5h4.4M5.8 9.5h4.4" />
+    </>
+  ),
+  shop: (
+    <>
+      <path d="M3 7l1-3h8l1 3" />
+      <path d="M3 7h10v2H3zM4 9v5h8V9" />
+    </>
+  ),
 };
 
 function HudIcon({ name }) {
@@ -170,7 +182,7 @@ export function Gacha({ onGacha }) {
     <div className="absolute" style={{ right: 24, top: '32%', zIndex: 30 }}>
       <div className="gacha-btn" onClick={onGacha}>
         <span className="gacha-label">GACHA</span>
-        <span className="gacha-sub">NOT READY</span>
+        <span className="gacha-sub">LOTTERY</span>
       </div>
     </div>
   );
@@ -186,12 +198,14 @@ export function GuideArrow() {
   );
 }
 
-export function QuickBar({ activeCampus, onTasks, onBag, onSettings }) {
+export function QuickBar({ activeCampus, onTasks, onBag, onSettings, onSignin, onMarket }) {
   return (
     <div className="absolute" style={{ top: 16, left: 180, zIndex: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div className="quickbar-label">[ {activeCampus?.name || ''} ]</div>
       <div className="tr-btns" style={{ display: 'flex', gap: 8 }}>
         <button className="hud-btn" onClick={onTasks}><HudIcon name="task" />任务</button>
+        <button className="hud-btn" onClick={onSignin}><HudIcon name="coin" />签到</button>
+        <button className="hud-btn" onClick={onMarket}><HudIcon name="shop" />市场</button>
         <button className="hud-btn warn" onClick={onBag}><HudIcon name="bag" />背包</button>
         <button className="hud-btn warn" onClick={onSettings}><HudIcon name="gear" />设置</button>
       </div>

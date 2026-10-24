@@ -181,10 +181,6 @@ export function seedIfEmpty() {
   const insertUser = db.prepare('INSERT INTO users (nickname, college, avatar, exp, created_at) VALUES (?, ?, ?, ?, ?)');
   const insertMessage = db.prepare('INSERT INTO messages (channel_id, user_id, conversation_type, conversation_id, content, created_at) VALUES (?, ?, ?, ?, ?, ?)');
   const insertPost = db.prepare('INSERT INTO posts (channel_id, user_id, title, content, category, created_at) VALUES (?, ?, ?, ?, ?, ?)');
-  const insertTodo = db.prepare(
-    `INSERT INTO todos (user_id, title, description, due_date, status, exp_reward, area_id, created_at, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
   const insertAchievement = db.prepare(
     'INSERT INTO achievements (code, name, description, icon, metric, threshold) VALUES (?, ?, ?, ?, ?, ?)'
   );
@@ -237,11 +233,6 @@ export function seedIfEmpty() {
     insertPost.run(channelIdByKey['minglun:图书馆'], demoUserId, '【自习搭子】明伦图书馆一起自习', '每天 19:00-22:00，四楼靠窗区，想来的留言～', '自习', nowIso());
     insertPost.run(channelIdByKey['minglun:东操场'], demoUserId, '【约跑】今晚东操场 5 公里', '19:30 操场南门集合，配速 6 分，新手友好！', '运动', nowIso());
     insertPost.run(channelIdByKey['jinming:图书馆'], demoUserId, '【资料分享】高数期末复习笔记', '整理了一份高数知识点汇总，需要的同学评论区扣 1', '学习', nowIso());
-
-    // 示例待办
-    insertTodo.run(demoUserId, '去明伦图书馆借《数据库系统概论》', '期末复习要用', '2026-10-24', 'pending', 10, areaIdByKey['minglun:图书馆'], nowIso(), null);
-    insertTodo.run(demoUserId, '志义体育场跑步 3 公里', '天气好就去', '2026-10-26', 'pending', 10, areaIdByKey['jinming:志义体育场'], nowIso(), null);
-    insertTodo.run(demoUserId, '去创业中心参加分享会', '学习创业经验', null, 'completed', 10, areaIdByKey['jinming:创业中心'], nowIso(), nowIso());
   })();
 
   return true;
@@ -274,13 +265,50 @@ export function ensureWorldChannel() {
 // 幂等：确保管理员账号存在（昵称可用环境变量 ADMIN_NICKNAME 覆盖，默认 FOolish）
 export function ensureAdmin() {
   const nick = process.env.ADMIN_NICKNAME || 'FOolish';
+  const fullPerms = JSON.stringify(['COIN_ADD', 'COIN_MINUS', 'USER_MANAGE', 'ADMIN_GRANT']);
   const existing = db.prepare('SELECT id FROM users WHERE nickname = ?').get(nick);
   if (!existing) {
     const info = db
-      .prepare("INSERT INTO users (nickname, college, avatar, exp, role, created_at) VALUES (?, '', '🎓', 0, 'admin', ?)")
-      .run(nick, nowIso());
+      .prepare("INSERT INTO users (nickname, college, avatar, exp, role, permissions, created_at) VALUES (?, '', '🎓', 0, 'admin', ?, ?)")
+      .run(nick, fullPerms, nowIso());
     return Number(info.lastInsertRowid);
   }
-  db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(existing.id);
+  db.prepare("UPDATE users SET role = 'admin', permissions = ? WHERE id = ?").run(fullPerms, existing.id);
   return existing.id;
+}
+
+// 触发式成就（metric='trigger'，由 server/achievements.js 的 triggerAchievement 幂等解锁）
+const TRIGGER_ACHIEVEMENTS = [
+  { code: 'EXP_001', name: '初次校准', hint: '接入明伦校区星图', description: '首次登录并加载地图', icon: '🛰️', type: 'exploration' },
+  { code: 'EXP_002', name: '微观视界', hint: '拉近你的镜头，看清世界的纹理', description: '地图缩放达到最大倍率', icon: '🔬', type: 'exploration' },
+  { code: 'EXP_003', name: '幽灵坐标', hint: '有些节点隐藏着秘密，多试探几次', description: '连续点击特定节点5次', icon: '👻', type: 'exploration' },
+  { code: 'EXP_004', name: '迷途羔羊', hint: '你的鼠标似乎在寻找什么', description: '拖拽地图累计位移超50000px', icon: '🌀', type: 'exploration' },
+  { code: 'EXP_005', name: '赏金猎人', hint: '完成他人的委托', description: '首次成功完成公开任务', icon: '💰', type: 'task' },
+  { code: 'EXP_006', name: '商业巨头', hint: '用重金悬赏你的需求', description: '发布任务冻结经验累计超1000', icon: '📈', type: 'task' },
+  { code: 'EXP_007', name: '备忘录成精', hint: '大脑装不下了，就用终端记录', description: '创建20个私密备忘', icon: '📝', type: 'task' },
+  { code: 'EXP_008', name: '赛博乞丐', hint: '空空如也的钱包也想发悬赏', description: '余额为0时尝试发布公开任务', icon: '🪙', type: 'task' },
+  { code: 'EXP_009', name: '连续被拒', hint: '你的交付物似乎不合老板胃口', description: '同一任务被连续驳回3次', icon: '🚫', type: 'task' },
+  { code: 'EXP_010', name: '全频段阻塞', hint: '让全校听到你的声音', description: '在世界频道发送首条消息', icon: '📡', type: 'social' },
+  { code: 'EXP_011', name: '话痨终端', hint: '手速快到突破系统限制', description: '1分钟内发送10条消息', icon: '💬', type: 'social' },
+  { code: 'EXP_012', name: '社交悍匪', hint: '让你的名字频繁出现在别人屏幕上', description: '累计发送@提及50次', icon: '🔗', type: 'social' },
+  { code: 'EXP_013', name: '表情包大户', hint: '图库比图书馆还丰富', description: '上传表情包达上限并发送', icon: '🎭', type: 'social' },
+  { code: 'EXP_014', name: '夜行者', hint: '在深夜保持连线', description: '凌晨2点-4点在世界频道发言', icon: '🌙', type: 'social' },
+  { code: 'EXP_015', name: '摸鱼先锋', hint: '什么都不做，也是一种修行', description: '在地图界面无操作挂机60分钟', icon: '🦥', type: 'secret' },
+];
+
+// 幂等：确保触发式成就定义存在，并同步更新 hint/名称/描述（每次启动调用）
+export function ensureAchievements() {
+  const upsert = db.prepare(
+    `INSERT INTO achievements (code, name, description, hint, icon, metric, threshold, type)
+     VALUES (?, ?, ?, ?, ?, 'trigger', 1, ?)
+     ON CONFLICT(code) DO UPDATE SET
+       name = excluded.name,
+       description = excluded.description,
+       hint = excluded.hint,
+       icon = excluded.icon,
+       type = excluded.type`
+  );
+  for (const a of TRIGGER_ACHIEVEMENTS) {
+    upsert.run(a.code, a.name, a.description, a.hint, a.icon, a.type);
+  }
 }

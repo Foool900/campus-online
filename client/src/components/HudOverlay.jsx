@@ -10,7 +10,7 @@ export default function HudOverlay({ children }) {
 
   // 活动详情页 / 任务详情页 / co-online 自带全屏覆盖层与返回按钮，这里原样渲染，不套居中玻璃面板
   // 注意：任务详情是 /task/:id，必须用 '/task/'（带斜杠），避免把 /tasks（任务列表）也误判成全屏页
-  if (location.pathname.startsWith('/activity') || location.pathname.startsWith('/co-online') || location.pathname.startsWith('/task/')) {
+  if (location.pathname.startsWith('/activity') || location.pathname.startsWith('/co-online') || location.pathname.startsWith('/task/') || location.pathname.startsWith('/profile')) {
     return children;
   }
 

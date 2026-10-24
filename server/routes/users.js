@@ -11,9 +11,9 @@ function mapUser(row) {
     nickname: row.nickname,
     college: row.college,
     avatar: row.avatar,
-    exp: row.exp, // 累计经验 totalExp（保留旧字段名，兼容前端）
-    availableExp: row.available_exp,
-    frozenExp: row.frozen_exp,
+    exp: row.exp, // 累计经验，只增不减，决定等级
+    coin: row.coin,
+    frozenCoin: row.frozen_coin,
     level: levelOf(row.exp),
     role: row.role,
     createdAt: row.created_at,

@@ -21,7 +21,7 @@ function makeUser(exp = 0, avail = exp) {
   seq += 1;
   const info = db
     .prepare(
-      "INSERT INTO users (nickname, college, avatar, exp, available_exp, frozen_exp, role, created_at) VALUES (?, '计算机', '🎓', ?, ?, 0, 'student', ?)"
+      "INSERT INTO users (nickname, college, avatar, exp, coin, frozen_coin, role, created_at) VALUES (?, '计算机', '🎓', ?, ?, 0, 'student', ?)"
     )
     .run(`测试用户${seq}`, exp, avail, nowIso());
   return Number(info.lastInsertRowid);
@@ -35,7 +35,7 @@ test('任务讨论区：发布者/接取者可发言，他人被拒', () => {
   const pubId = makeUser(1000, 500);
   const assigneeId = makeUser(0, 0);
   const otherId = makeUser(0, 0);
-  const t = publishTask(u(pubId), { type: 'public', title: 'T', rewardExp: 10 }).task;
+  const t = publishTask(u(pubId), { type: 'public', title: 'T', rewardCoin: 10 }).task;
 
   const byPub = insertConversationMessage('task', t.id, pubId, { content: '发布者发言' });
   assert.equal(byPub.error, undefined);
@@ -50,8 +50,8 @@ test('任务讨论区：发布者/接取者可发言，他人被拒', () => {
 
 test('任务讨论区消息严格按任务隔离', () => {
   const pubId = makeUser(10000, 5000);
-  const t1 = publishTask(u(pubId), { type: 'public', title: 'T1', rewardExp: 5 }).task;
-  const t2 = publishTask(u(pubId), { type: 'public', title: 'T2', rewardExp: 5 }).task;
+  const t1 = publishTask(u(pubId), { type: 'public', title: 'T1', rewardCoin: 5 }).task;
+  const t2 = publishTask(u(pubId), { type: 'public', title: 'T2', rewardCoin: 5 }).task;
 
   insertConversationMessage('task', t1.id, pubId, { content: '属于任务1' });
   insertConversationMessage('task', t2.id, pubId, { content: '属于任务2' });
@@ -67,7 +67,7 @@ test('任务讨论区消息严格按任务隔离', () => {
 test('状态变更系统消息写入任务讨论区', () => {
   const pubId = makeUser(1000, 500);
   const assigneeId = makeUser(0, 0);
-  const t = publishTask(u(pubId), { type: 'public', title: 'S', rewardExp: 10 }).task;
+  const t = publishTask(u(pubId), { type: 'public', title: 'S', rewardCoin: 10 }).task;
   acceptTask(u(assigneeId), t.id);
 
   const msgs = listConversationMessages('task', t.id);

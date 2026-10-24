@@ -1,0 +1,990 @@
+import { Router } from 'express';
+import { createHmac, randomBytes, createHash } from 'node:crypto';
+import { db, nowIso } from '../db.js';
+import { requireRole } from '../auth.js';
+import { config } from '../config.js';
+import { applyCoinRaw } from '../coin.js';
+import { treasuryBalance, addTreasury, spendTreasury } from '../treasury.js';
+
+const router = Router();
+
+// ============================================================
+// 基础工具
+// ============================================================
+
+function getSession(id) {
+  return db.prepare('SELECT * FROM market_sessions WHERE id = ?').get(id);
+}
+
+function currentSession() {
+  return db.prepare('SELECT * FROM market_sessions ORDER BY open_at DESC, id DESC LIMIT 1').get();
+}
+
+function isOpen(session) {
+  return !!session && session.status === 'open';
+}
+
+function assertOpen(session) {
+  if (!isOpen(session)) {
+    const e = new Error('市场未开市');
+    e.code = 'MARKET_CLOSED';
+    e.status = 409;
+    throw e;
+  }
+}
+
+// 运行时配置：market_configs 优先，回退 config.market
+function cfg(key) {
+  const row = db.prepare('SELECT value FROM market_configs WHERE key = ?').get(key);
+  if (row) {
+    try { return JSON.parse(row.value); } catch { /* ignore */ }
+  }
+  return config.market[key];
+}
+
+function writeLedger({ sessionId = null, bizType, bizId = null, op, userId = null, counterpartyId = null, amount, coinTxId = null, idempotencyKey }) {
+  db.prepare('INSERT INTO market_ledger (session_id, biz_type, biz_id, op, user_id, counterparty_id, amount, coin_tx_id, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(sessionId, bizType, bizId, op, userId, counterpartyId, amount, coinTxId, idempotencyKey, nowIso());
+}
+
+function throwBiz(code, message, status = 400) {
+  const e = new Error(message);
+  e.code = code;
+  e.status = status;
+  throw e;
+}
+
+function runTx(fn) {
+  try {
+    return { value: db.transaction(fn)() };
+  } catch (e) {
+    if (e && e.code) return { error: e.message, code: e.code, status: e.status || 400 };
+    throw e;
+  }
+}
+
+// ============================================================
+// 期次（session）
+// ============================================================
+
+// 以 openAt（ISO）为准创建期次，报名/闭市时间由 config 推导
+export function createSession(openAtIso) {
+  const openAt = new Date(openAtIso);
+  if (Number.isNaN(openAt.getTime())) return { error: '开市时间格式无效', status: 400 };
+  const signupStart = new Date(openAt.getTime() - cfg('signupBeforeMin') * 60000);
+  const signupEnd = new Date(openAt.getTime() - cfg('signupCloseBeforeMin') * 60000);
+  const closeAt = new Date(openAt.getTime() + cfg('durationMin') * 60000);
+  const seed = randomBytes(32).toString('hex');
+
+  const info = db.prepare('INSERT INTO market_sessions (status, signup_start_at, signup_end_at, open_at, close_at, seed_hash, seed, stall_count, roaming_minutes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run('upcoming', signupStart.toISOString(), signupEnd.toISOString(), openAt.toISOString(), closeAt.toISOString(),
+      createHash('sha256').update(seed).digest('hex'), seed, cfg('stallCount'), cfg('roamingMinutes'), nowIso());
+  const sessionId = Number(info.lastInsertRowid);
+
+  // 预建流动地摊
+  const insertStall = db.prepare('INSERT INTO market_stalls (session_id, stall_no, deposit_coin, created_at) VALUES (?, ?, ?, ?)');
+  db.transaction(() => {
+    for (let i = 1; i <= cfg('stallCount'); i++) {
+      insertStall.run(sessionId, i, cfg('depositCoin'), nowIso());
+    }
+  })();
+
+  return { session: getSession(sessionId) };
+}
+
+// 确保 5 家固定店铺存在（幂等）
+export function ensureMarketShops() {
+  const count = db.prepare('SELECT COUNT(*) AS c FROM market_shops').get().c;
+  if (count >= cfg('shopCount')) return;
+  const names = ['学苑老字号', '跳蚤中心', '数码驿站', '文创小铺', '生活杂货'];
+  const ins = db.prepare('INSERT OR IGNORE INTO market_shops (shop_no, name, description, sort_order, created_at) VALUES (?, ?, ?, ?, ?)');
+  for (let i = 1; i <= cfg('shopCount'); i++) {
+    ins.run(i, names[i - 1] || `店铺${i}`, '', i - 1, nowIso());
+  }
+}
+
+// ============================================================
+// 流动地摊：报名抽签
+// ============================================================
+
+export function signupStall(userId, sessionId) {
+  const session = getSession(sessionId);
+  if (!session) return { error: '期次不存在', status: 404 };
+  const now = Date.now();
+  const start = new Date(session.signup_start_at).getTime();
+  const end = new Date(session.signup_end_at).getTime();
+  if (now < start || now >= end) return { error: '当前不在报名时段', status: 409 };
+
+  const nonce = randomBytes(16).toString('hex');
+  try {
+    db.prepare('INSERT INTO market_stall_signups (session_id, user_id, nonce, created_at) VALUES (?, ?, ?, ?)').run(sessionId, userId, nonce, nowIso());
+    return { ok: true, signedUp: true };
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return { ok: true, signedUp: false, already: true };
+    throw e;
+  }
+}
+
+// 抽签：commit-reveal + HMAC，整体幂等
+export function drawStalls(sessionId) {
+  const session = getSession(sessionId);
+  if (!session) return { error: '期次不存在', status: 404 };
+  if (session.draw_status === 'done') return { ok: true, drawn: false };
+
+  // 条件更新拿抽签权；已 drawing（上次崩溃）则重入
+  db.prepare("UPDATE market_sessions SET draw_status='drawing' WHERE id=? AND draw_status='pending'").run(sessionId);
+
+  const seed = session.seed || randomBytes(32).toString('hex');
+  if (!session.seed) {
+    db.prepare('UPDATE market_sessions SET seed=?, seed_hash=? WHERE id=?').run(seed, createHash('sha256').update(seed).digest('hex'), sessionId);
+  }
+
+  const signups = db.prepare("SELECT * FROM market_stall_signups WHERE session_id=? AND result='pending' ORDER BY id ASC").all(sessionId);
+  const scored = signups
+    .map((s) => ({ id: s.id, userId: s.user_id, score: createHmac('sha256', seed).update(`${sessionId}|${s.user_id}|${s.nonce}`).digest('hex') }))
+    .sort((a, b) => (a.score < b.score ? -1 : a.score > b.score ? 1 : a.user_id - b.user_id));
+
+  const stalls = db.prepare('SELECT id, stall_no FROM market_stalls WHERE session_id=? ORDER BY stall_no ASC').all(sessionId);
+  const reservedExpires = new Date(Date.now() + 15 * 60000).toISOString(); // 中签确认截止 15min
+
+  db.transaction(() => {
+    const upd = db.prepare('UPDATE market_stall_signups SET score=?, result=?, stall_id=? WHERE id=?');
+    const stallUpd = db.prepare("UPDATE market_stalls SET status='reserved', owner_id=?, reserved_expires_at=? WHERE id=? AND status='available'");
+    scored.forEach((w, i) => {
+      if (i < session.stall_count && stalls[i]) {
+        upd.run(w.score, 'won', stalls[i].id, w.id);
+        stallUpd.run(w.userId, reservedExpires, stalls[i].id);
+      } else {
+        upd.run(w.score, 'lost', null, w.id);
+      }
+    });
+    db.prepare("UPDATE market_sessions SET draw_status='done' WHERE id=?").run(sessionId);
+  })();
+
+  return { ok: true, drawn: true, winners: Math.min(scored.length, session.stall_count) };
+}
+
+// 余位先到先得
+export function grabStall(userId, sessionId) {
+  const session = getSession(sessionId);
+  if (!session) return { error: '期次不存在', status: 404 };
+  assertOpen(session);
+
+  // 每期每人一摊（由 UNIQUE(session_id, owner_id) 兜底，这里先查）
+  const owned = db.prepare("SELECT id FROM market_stalls WHERE session_id=? AND owner_id=? AND status IN ('reserved','occupied')").get(sessionId, userId);
+  if (owned) return { error: '本期你已拥有摊位', status: 409 };
+
+  const key = `stall:grab:${sessionId}:${userId}`;
+  const stall = db.prepare("SELECT id FROM market_stalls WHERE session_id=? AND status='available' ORDER BY stall_no ASC LIMIT 1").get(sessionId);
+  if (!stall) return { error: '摊位已被抢完', status: 409 };
+
+  const reservedExpires = new Date(Date.now() + 15 * 60000).toISOString();
+  const r = runTx(() => {
+    const up = db.prepare("UPDATE market_stalls SET status='reserved', owner_id=?, reserved_expires_at=?, idempotency_key=? WHERE id=? AND status='available'").run(userId, reservedExpires, key, stall.id);
+    if (up.changes === 0) throwBiz('STALL_TAKEN', '摊位已被抢走', 409);
+    return { stallId: stall.id };
+  });
+  if (r.error) return r;
+  return { ok: true, stallId: r.value.stallId };
+}
+
+// 确认占位（冻结押金）
+export function confirmStall(userId, stallId) {
+  const stall = db.prepare('SELECT * FROM market_stalls WHERE id=?').get(stallId);
+  if (!stall) return { error: '摊位不存在', status: 404 };
+  if (stall.owner_id !== userId) return { error: '不是你的摊位', status: 403 };
+  if (stall.status !== 'reserved') return { error: '当前状态不可确认', status: 409 };
+
+  const session = getSession(stall.session_id);
+  assertOpen(session);
+  if (stall.reserved_expires_at && nowIso() > stall.reserved_expires_at) {
+    return { error: '确认已超时', status: 409 };
+  }
+
+  const expiresAt = new Date(Date.now() + cfg('roamingMinutes') * 60000).toISOString();
+  const key = `stall:confirm:${stallId}`;
+  const r = runTx(() => {
+    const up = db.prepare("UPDATE market_stalls SET status='occupied', grabbed_at=?, expires_at=? WHERE id=? AND status='reserved'").run(nowIso(), expiresAt, stallId);
+    if (up.changes === 0) throwBiz('STALL_BAD_STATE', '当前状态不可确认', 409);
+    const coin = applyCoinRaw({ fromUserId: userId, amount: stall.deposit_coin, type: 'freeze', relatedType: 'market_stall_deposit', relatedId: stallId, idempotencyKey: key });
+    if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+    writeLedger({ sessionId: stall.session_id, bizType: 'stall_deposit', bizId: stallId, op: 'freeze', userId, amount: stall.deposit_coin, coinTxId: coin.txId, idempotencyKey: `${key}:ledger` });
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+// 释放摊位
+export function releaseStall(userId, stallId) {
+  const stall = db.prepare('SELECT * FROM market_stalls WHERE id=?').get(stallId);
+  if (!stall) return { error: '摊位不存在', status: 404 };
+  if (stall.owner_id !== userId) return { error: '不是你的摊位', status: 403 };
+  if (!['reserved', 'occupied'].includes(stall.status)) return { error: '当前状态不可释放', status: 409 };
+
+  const r = runTx(() => {
+    db.prepare("UPDATE market_stalls SET status='released', expires_at=NULL, reserved_expires_at=NULL WHERE id=?").run(stallId);
+    // 未售商品下架
+    db.prepare("UPDATE market_items SET status='expired' WHERE stall_id=? AND status IN ('active','reserved')").run(stallId);
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+// ============================================================
+// 商品
+// ============================================================
+
+export function createItem(userId, { sessionId, title, description, priceCoin, type = 'normal', stock = 1, contentJson = null, valueCoin = null }) {
+  const session = getSession(sessionId);
+  if (!session) return { error: '期次不存在', status: 404 };
+  const t = (title || '').toString().trim();
+  const price = Number(priceCoin);
+  if (!t) return { error: '标题不能为空', status: 400 };
+  if (t.length > 60) return { error: '标题过长（最多 60 字）', status: 400 };
+  if (!Number.isInteger(price) || price <= 0) return { error: '价格必须为正整数金币', status: 400 };
+  if (!['normal', 'blindbox', 'flash_sale'].includes(type)) return { error: '商品类型无效', status: 400 };
+
+  const key = `item:${sessionId}:${userId}:${randomBytes(8).toString('hex')}`;
+  const r = runTx(() => {
+    const info = db.prepare("INSERT INTO market_items (session_id, seller_id, type, title, description, price_coin, stock, status, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)")
+      .run(sessionId, userId, type, t, (description || '').toString().trim(), price, stock, key, nowIso());
+    const itemId = Number(info.lastInsertRowid);
+
+    if (type === 'blindbox') {
+      const content = contentJson || JSON.stringify({ surprise: true });
+      const deposit = Math.max(1, Math.floor(price * cfg('blindboxDepositRatio')));
+      const minValue = Math.max(1, Math.floor(price * cfg('blindboxMinValueRatio')));
+      db.prepare('INSERT INTO market_blindbox_configs (item_id, content_json, deposit_coin, min_value_coin, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(itemId, content, deposit, minValue, nowIso());
+    }
+    return { itemId };
+  });
+  if (r.error) return r;
+  return { itemId: r.value.itemId };
+}
+
+function mapItem(row) {
+  if (!row) return row;
+  return {
+    id: row.id, sessionId: row.session_id, stallId: row.stall_id, shopId: row.shop_id, sellerId: row.seller_id,
+    type: row.type, title: row.title, description: row.description, priceCoin: row.price_coin, stock: row.stock,
+    soldCount: row.sold_count, status: row.status, isOfficial: !!row.is_official, flashSaleAt: row.flash_sale_at,
+    createdAt: row.created_at, soldAt: row.sold_at,
+    sellerName: row.seller_name, sellerAvatar: row.seller_avatar,
+  };
+}
+
+// 上架（draft → active，绑定摊位）
+export function listItem(userId, itemId, { stallId = null, shopId = null }) {
+  const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(itemId);
+  if (!item) return { error: '商品不存在', status: 404 };
+  if (item.seller_id !== userId) return { error: '不是你的商品', status: 403 };
+  if (item.status !== 'draft') return { error: '商品已上架', status: 409 };
+
+  const session = getSession(item.session_id);
+  assertOpen(session);
+
+  if (stallId) {
+    const stall = db.prepare('SELECT * FROM market_stalls WHERE id=?').get(stallId);
+    if (!stall || stall.owner_id !== userId || stall.status !== 'occupied') return { error: '摊位无效', status: 400 };
+  } else if (shopId) {
+    const term = db.prepare("SELECT * FROM market_shop_terms WHERE shop_id=? AND owner_id=? AND status='active'").get(shopId, userId);
+    if (!term) return { error: '店铺无效', status: 400 };
+  } else {
+    return { error: '需指定摊位或店铺', status: 400 };
+  }
+
+  const r = runTx(() => {
+    const up = db.prepare("UPDATE market_items SET status='active', stall_id=?, shop_id=? WHERE id=? AND status='draft'").run(stallId, shopId, itemId);
+    if (up.changes === 0) throwBiz('ITEM_BAD_STATE', '商品已上架', 409);
+
+    // 盲盒：冻结保证金
+    if (item.type === 'blindbox') {
+      const bc = db.prepare('SELECT * FROM market_blindbox_configs WHERE item_id=?').get(itemId);
+      const key = `blindbox_deposit:${itemId}`;
+      const coin = applyCoinRaw({ fromUserId: userId, amount: bc.deposit_coin, type: 'freeze', relatedType: 'market_blindbox_deposit', relatedId: itemId, idempotencyKey: key });
+      if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+      db.prepare('UPDATE market_blindbox_configs SET deposit_frozen_key=? WHERE item_id=?').run(key, itemId);
+      writeLedger({ sessionId: item.session_id, bizType: 'blindbox_deposit', bizId: itemId, op: 'freeze', userId, amount: bc.deposit_coin, coinTxId: coin.txId, idempotencyKey: `${key}:ledger` });
+    }
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+export function removeItem(userId, itemId) {
+  const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(itemId);
+  if (!item) return { error: '商品不存在', status: 404 };
+  if (item.seller_id !== userId) return { error: '不是你的商品', status: 403 };
+  if (!['active', 'draft'].includes(item.status)) return { error: '当前状态不可下架', status: 409 };
+
+  const r = runTx(() => {
+    const up = db.prepare("UPDATE market_items SET status='removed', removed_at=? WHERE id=? AND status IN ('active','draft')").run(nowIso(), itemId);
+    if (up.changes === 0) throwBiz('ITEM_BAD_STATE', '下架失败', 409);
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+// ============================================================
+// 购买 / 订单
+// ============================================================
+
+export function buyItem(buyerId, itemId) {
+  const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(itemId);
+  if (!item) return { error: '商品不存在', status: 404 };
+  if (item.seller_id === buyerId) return { error: '不能购买自己的商品', status: 400 };
+  const session = getSession(item.session_id);
+  assertOpen(session);
+
+  const feeRate = cfg('tradeFeeRate') ?? config.coin.tradeFeeRate;
+  const fee = Math.floor(item.price_coin * feeRate);
+  const key = `order:${itemId}:${buyerId}:buy`;
+
+  const r = runTx(() => {
+    // 锁定商品（单件）/ 扣库存（多件）
+    let stockRes;
+    if (item.stock === 1) {
+      stockRes = db.prepare("UPDATE market_items SET status='reserved', reserved_order_id=NULL WHERE id=? AND status='active' AND sold_count < stock").run(itemId);
+    } else {
+      stockRes = db.prepare("UPDATE market_items SET sold_count = sold_count + 1 WHERE id=? AND status='active' AND sold_count < stock").run(itemId);
+    }
+    if (stockRes.changes === 0) throwBiz('OUT_OF_STOCK', '商品已售罄', 409);
+
+    // 冻结付款
+    const coin = applyCoinRaw({ fromUserId: buyerId, amount: item.price_coin, type: 'freeze', relatedType: 'market_order', relatedId: itemId, idempotencyKey: key });
+    if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+
+    const info = db.prepare("INSERT INTO market_orders (item_id, buyer_id, seller_id, type, price_coin, fee_coin, status, paid_at, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, 'paid_escrow', ?, ?, ?)")
+      .run(itemId, buyerId, item.seller_id, item.type, item.price_coin, fee, nowIso(), `${key}:order`, nowIso());
+    const orderId = Number(info.lastInsertRowid);
+
+    // 回填单件锁定的订单
+    if (item.stock === 1) db.prepare('UPDATE market_items SET reserved_order_id=? WHERE id=?').run(orderId, itemId);
+
+    writeLedger({ sessionId: item.session_id, bizType: 'order_pay', bizId: orderId, op: 'freeze', userId: buyerId, amount: item.price_coin, coinTxId: coin.txId, idempotencyKey: `${key}:ledger` });
+    return { orderId, price: item.price_coin, fee };
+  });
+  if (r.error) return r;
+  return { ok: true, ...r.value };
+}
+
+export function payOrder(buyerId, orderId) {
+  const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(orderId);
+  if (!order) return { error: '订单不存在', status: 404 };
+  if (order.buyer_id !== buyerId) return { error: '不是你的订单', status: 403 };
+  if (order.status !== 'pending_payment') return { error: '当前状态不可支付', status: 409 };
+  if (order.pay_deadline_at && nowIso() > order.pay_deadline_at) return { error: '支付已超时', status: 409 };
+
+  const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(order.item_id);
+  const key = `order:${orderId}:pay`;
+  const r = runTx(() => {
+    const up = db.prepare("UPDATE market_orders SET status='paid_escrow', paid_at=? WHERE id=? AND status='pending_payment'").run(nowIso(), orderId);
+    if (up.changes === 0) throwBiz('ORDER_BAD_STATE', '支付失败', 409);
+    if (order.type === 'bargain') {
+      // 砍价订单：出价已在发起时冻结，支付只做状态流转，不重复冻结
+      db.prepare("UPDATE market_bargains SET status='paid' WHERE id=?").run(order.bargain_id);
+    } else {
+      const coin = applyCoinRaw({ fromUserId: buyerId, amount: order.price_coin, type: 'freeze', relatedType: 'market_order', relatedId: orderId, idempotencyKey: key });
+      if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+      writeLedger({ sessionId: item?.session_id, bizType: 'order_pay', bizId: orderId, op: 'freeze', userId: buyerId, amount: order.price_coin, coinTxId: coin.txId, idempotencyKey: `${key}:ledger` });
+    }
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+export function deliverOrder(sellerId, orderId) {
+  const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(orderId);
+  if (!order) return { error: '订单不存在', status: 404 };
+  if (order.seller_id !== sellerId) return { error: '不是你的订单', status: 403 };
+  if (order.status !== 'paid_escrow') return { error: '当前状态不可交付', status: 409 };
+  const r = runTx(() => {
+    const up = db.prepare("UPDATE market_orders SET status='delivered', delivered_at=? WHERE id=? AND status='paid_escrow'").run(nowIso(), orderId);
+    if (up.changes === 0) throwBiz('ORDER_BAD_STATE', '交付失败', 409);
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+// 买家确认收货：托管 → 卖家净额 + 手续费 → 奖池
+export function confirmOrder(buyerId, orderId) {
+  const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(orderId);
+  if (!order) return { error: '订单不存在', status: 404 };
+  if (order.buyer_id !== buyerId) return { error: '不是你的订单', status: 403 };
+  if (!['paid_escrow', 'delivered'].includes(order.status)) return { error: '当前状态不可确认', status: 409 };
+
+  const itemSessionId = db.prepare('SELECT session_id FROM market_items WHERE id=?').get(order.item_id)?.session_id;
+  const fee = order.fee_coin;
+  const net = order.price_coin - fee;
+  const key = `order:${orderId}:confirm`;
+  const r = runTx(() => {
+    const up = db.prepare("UPDATE market_orders SET status='completed', completed_at=? WHERE id=? AND status IN ('paid_escrow','delivered')").run(nowIso(), orderId);
+    if (up.changes === 0) throwBiz('ORDER_BAD_STATE', '确认失败', 409);
+
+    // 托管拆账：卖家净额（transfer）、手续费（refund 回买家再 sink 销毁 + treasury 入账）
+    if (net > 0) {
+      const t = applyCoinRaw({ fromUserId: buyerId, toUserId: order.seller_id, amount: net, type: 'transfer', relatedType: 'market_order', relatedId: orderId, idempotencyKey: `${key}:transfer` });
+      if (t.error) throwBiz(t.code, t.error, t.status);
+      writeLedger({ sessionId: itemSessionId, bizType: 'order_charge', bizId: orderId, op: 'charge', userId: order.seller_id, counterpartyId: buyerId, amount: net, coinTxId: t.txId, idempotencyKey: `${key}:ledger:charge` });
+    }
+    if (fee > 0) {
+      const rf = applyCoinRaw({ fromUserId: buyerId, amount: fee, type: 'refund', relatedType: 'market_order', relatedId: orderId, idempotencyKey: `${key}:fee-unfreeze` });
+      if (rf.error) throwBiz(rf.code, rf.error, rf.status);
+      applyCoinRaw({ fromUserId: buyerId, amount: fee, type: 'sink', relatedType: 'market_order', relatedId: orderId, idempotencyKey: `${key}:fee-sink` });
+      addTreasury(fee);
+      writeLedger({ sessionId: itemSessionId, bizType: 'order_fee', bizId: orderId, op: 'treasury_in', userId: order.seller_id, amount: fee, idempotencyKey: `${key}:ledger:fee` });
+    }
+
+    // 商品：单件转 sold；多件判断 sold_count
+    db.prepare("UPDATE market_items SET status='sold', sold_at=? WHERE id=? AND stock=1").run(nowIso(), order.item_id);
+    db.prepare("UPDATE market_items SET status='sold' WHERE id=? AND stock>1 AND sold_count>=stock").run(order.item_id);
+
+    // 信誉事件：完成
+    db.prepare("INSERT OR IGNORE INTO market_reputation_events (user_id, order_id, event, created_at) VALUES (?, ?, 'completion', ?)").run(order.seller_id, orderId, nowIso());
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+export function cancelOrder(buyerId, orderId) {
+  const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(orderId);
+  if (!order) return { error: '订单不存在', status: 404 };
+  if (order.buyer_id !== buyerId) return { error: '不是你的订单', status: 403 };
+  if (order.status !== 'pending_payment') return { error: '当前状态不可取消', status: 409 };
+
+  const r = runTx(() => {
+    db.prepare("UPDATE market_orders SET status='cancelled', cancelled_at=? WHERE id=? AND status='pending_payment'").run(nowIso(), orderId);
+    // 商品回 active（若还开市）或 expired
+    db.prepare("UPDATE market_items SET status='active', reserved_order_id=NULL WHERE id=? AND status='reserved'").run(order.item_id);
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+export function refundOrder(orderId) {
+  const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(orderId);
+  if (!order) return { error: '订单不存在', status: 404 };
+  if (!['paid_escrow', 'delivered', 'disputed'].includes(order.status)) return { error: '当前状态不可退款', status: 409 };
+
+  const itemSessionId = db.prepare('SELECT session_id FROM market_items WHERE id=?').get(order.item_id)?.session_id;
+  const key = `order:${orderId}:refund`;
+  const r = runTx(() => {
+    db.prepare("UPDATE market_orders SET status='refunded', cancelled_at=? WHERE id=? AND status IN ('paid_escrow','delivered','disputed')").run(nowIso(), orderId);
+    const coin = applyCoinRaw({ fromUserId: order.buyer_id, amount: order.price_coin, type: 'refund', relatedType: 'market_order', relatedId: orderId, idempotencyKey: key });
+    if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+    writeLedger({ sessionId: itemSessionId, bizType: 'order_refund', bizId: orderId, op: 'refund', userId: order.buyer_id, amount: order.price_coin, coinTxId: coin.txId, idempotencyKey: `${key}:ledger` });
+    // 商品回 active / expired（单件）
+    db.prepare("UPDATE market_items SET status='active', reserved_order_id=NULL WHERE id=? AND status='reserved'").run(order.item_id);
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+// ============================================================
+// 砍价
+// ============================================================
+
+export function createBargain(buyerId, itemId, offerCoin) {
+  const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(itemId);
+  if (!item) return { error: '商品不存在', status: 404 };
+  if (item.seller_id === buyerId) return { error: '不能砍自己的商品', status: 400 };
+  const session = getSession(item.session_id);
+  assertOpen(session);
+
+  const offer = Number(offerCoin);
+  if (!Number.isInteger(offer) || offer <= 0 || offer >= item.price_coin) return { error: '出价无效（需为正整数且低于标价）', status: 400 };
+
+  const key = `bargain:${itemId}:${buyerId}`;
+  const r = runTx(() => {
+    const attempt = db.prepare('SELECT COALESCE(MAX(attempt_no), 0) + 1 AS n FROM market_bargains WHERE item_id=? AND buyer_id=?').get(itemId, buyerId).n;
+    const coin = applyCoinRaw({ fromUserId: buyerId, amount: offer, type: 'freeze', relatedType: 'market_bargain', relatedId: itemId, idempotencyKey: `${key}:${attempt}` });
+    if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+    const info = db.prepare("INSERT INTO market_bargains (item_id, buyer_id, seller_id, attempt_no, offer_coin, frozen_key, idempotency_key, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
+      .run(itemId, buyerId, item.seller_id, attempt, offer, `${key}:${attempt}`, `${key}:${attempt}`, nowIso());
+    writeLedger({ sessionId: item.session_id, bizType: 'bargain_freeze', bizId: Number(info.lastInsertRowid), op: 'freeze', userId: buyerId, amount: offer, coinTxId: coin.txId, idempotencyKey: `${key}:${attempt}:ledger` });
+    return { bargainId: Number(info.lastInsertRowid) };
+  });
+  if (r.error) return r;
+  return { ok: true, bargainId: r.value.bargainId };
+}
+
+export function acceptBargain(sellerId, bargainId) {
+  const bargain = db.prepare('SELECT * FROM market_bargains WHERE id=?').get(bargainId);
+  if (!bargain) return { error: '砍价不存在', status: 404 };
+  if (bargain.seller_id !== sellerId) return { error: '不是你的商品', status: 403 };
+  if (bargain.status !== 'pending') return { error: '当前状态不可接受', status: 409 };
+  const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(bargain.item_id);
+  const session = getSession(item.session_id);
+  assertOpen(session);
+
+  const payDeadline = new Date(Date.now() + cfg('bargainPayHours') * 3600000).toISOString();
+  const key = `bargain:${bargainId}:accept`;
+  const r = runTx(() => {
+    // 锁定商品
+    const up = db.prepare("UPDATE market_items SET status='reserved', reserved_order_id=NULL WHERE id=? AND status='active'").run(item.id);
+    if (up.changes === 0) throwBiz('ITEM_NOT_AVAILABLE', '商品不可用', 409);
+
+    db.prepare("UPDATE market_bargains SET status='accepted', accepted_at=?, expires_at=? WHERE id=? AND status='pending'").run(nowIso(), payDeadline, bargainId);
+
+    // 其余 pending 砍价：过期 + 退款
+    const others = db.prepare("SELECT * FROM market_bargains WHERE item_id=? AND status='pending' AND id!=?").all(item.id, bargainId);
+    for (const o of others) {
+      const rk = `bargain:${o.id}:expire`;
+      const coin = applyCoinRaw({ fromUserId: o.buyer_id, amount: o.offer_coin, type: 'refund', relatedType: 'market_bargain', relatedId: o.id, idempotencyKey: rk });
+      if (!coin.error) {
+        db.prepare("UPDATE market_bargains SET status='expired' WHERE id=?").run(o.id);
+        writeLedger({ sessionId: item.session_id, bizType: 'bargain_unfreeze', bizId: o.id, op: 'refund', userId: o.buyer_id, amount: o.offer_coin, coinTxId: coin.txId, idempotencyKey: `${rk}:ledger` });
+      }
+    }
+
+    // 生成待支付订单
+    const fee = Math.floor(bargain.offer_coin * (cfg('tradeFeeRate') ?? config.coin.tradeFeeRate));
+    const info = db.prepare("INSERT INTO market_orders (item_id, buyer_id, seller_id, type, bargain_id, price_coin, fee_coin, status, pay_deadline_at, idempotency_key, created_at) VALUES (?, ?, ?, 'bargain', ?, ?, ?, 'pending_payment', ?, ?, ?)")
+      .run(item.id, bargain.buyer_id, sellerId, bargainId, bargain.offer_coin, fee, payDeadline, `${key}:order`, nowIso());
+    const orderId = Number(info.lastInsertRowid);
+    db.prepare('UPDATE market_items SET reserved_order_id=? WHERE id=?').run(orderId, item.id);
+    return { orderId };
+  });
+  if (r.error) return r;
+  return { ok: true, orderId: r.value.orderId };
+}
+
+export function rejectBargain(sellerId, bargainId) {
+  const bargain = db.prepare('SELECT * FROM market_bargains WHERE id=?').get(bargainId);
+  if (!bargain) return { error: '砍价不存在', status: 404 };
+  if (bargain.seller_id !== sellerId) return { error: '不是你的商品', status: 403 };
+  if (bargain.status !== 'pending') return { error: '当前状态不可拒绝', status: 409 };
+
+  const key = `bargain:${bargainId}:reject`;
+  const r = runTx(() => {
+    db.prepare("UPDATE market_bargains SET status='rejected' WHERE id=? AND status='pending'").run(bargainId);
+    const coin = applyCoinRaw({ fromUserId: bargain.buyer_id, amount: bargain.offer_coin, type: 'refund', relatedType: 'market_bargain', relatedId: bargainId, idempotencyKey: key });
+    if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+    writeLedger({ sessionId: null, bizType: 'bargain_unfreeze', bizId: bargainId, op: 'refund', userId: bargain.buyer_id, amount: bargain.offer_coin, coinTxId: coin.txId, idempotencyKey: `${key}:ledger` });
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+// ============================================================
+// 盲盒
+// ============================================================
+
+export function openBlindbox(buyerId, orderId) {
+  const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(orderId);
+  if (!order) return { error: '订单不存在', status: 404 };
+  if (order.buyer_id !== buyerId) return { error: '不是你的订单', status: 403 };
+  if (order.type !== 'blindbox') return { error: '不是盲盒订单', status: 400 };
+  if (order.status !== 'paid_escrow') return { error: '当前状态不可开盒', status: 409 };
+
+  const bc = db.prepare('SELECT * FROM market_blindbox_configs WHERE item_id=?').get(order.item_id);
+  const itemSessionId = db.prepare('SELECT session_id FROM market_items WHERE id=?').get(order.item_id)?.session_id;
+  const holdUntil = new Date(Date.now() + cfg('blindboxHoldHours') * 3600000).toISOString();
+
+  const r = runTx(() => {
+    db.prepare('INSERT INTO market_blindbox_opens (order_id, item_id, buyer_id, opened_result_json, opened_value_coin, opened_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(orderId, order.item_id, buyerId, bc.content_json, bc.min_value_coin, nowIso(), nowIso());
+    db.prepare("UPDATE market_blindbox_configs SET status='held', hold_until=? WHERE item_id=?").run(holdUntil, order.item_id);
+    // 开盒即视为收货完成（盲盒开盒即成交，保证金托管 24h）
+    db.prepare("UPDATE market_orders SET status='completed', completed_at=? WHERE id=? AND status='paid_escrow'").run(nowIso(), orderId);
+    // 盲盒开盒即划账（charge）：托管 → 卖家 + 手续费
+    const fee = order.fee_coin;
+    const net = order.price_coin - fee;
+    const key = `order:${orderId}:open`;
+    if (net > 0) {
+      const t = applyCoinRaw({ fromUserId: buyerId, toUserId: order.seller_id, amount: net, type: 'transfer', relatedType: 'market_order', relatedId: orderId, idempotencyKey: `${key}:transfer` });
+      if (t.error) throwBiz(t.code, t.error, t.status);
+      writeLedger({ sessionId: itemSessionId, bizType: 'order_charge', bizId: orderId, op: 'charge', userId: order.seller_id, counterpartyId: buyerId, amount: net, coinTxId: t.txId, idempotencyKey: `${key}:ledger:charge` });
+    }
+    if (fee > 0) {
+      const rf = applyCoinRaw({ fromUserId: buyerId, amount: fee, type: 'refund', relatedType: 'market_order', relatedId: orderId, idempotencyKey: `${key}:fee-unfreeze` });
+      if (rf.error) throwBiz(rf.code, rf.error, rf.status);
+      applyCoinRaw({ fromUserId: buyerId, amount: fee, type: 'sink', relatedType: 'market_order', relatedId: orderId, idempotencyKey: `${key}:fee-sink` });
+      addTreasury(fee);
+      writeLedger({ sessionId: itemSessionId, bizType: 'order_fee', bizId: orderId, op: 'treasury_in', userId: order.seller_id, amount: fee, idempotencyKey: `${key}:ledger:fee` });
+    }
+    db.prepare("UPDATE market_items SET status='sold', sold_at=? WHERE id=? AND stock=1").run(nowIso(), order.item_id);
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+// ============================================================
+// 店铺竞拍（简版：价高者得，周期结算由 settleShopTerms 处理）
+// ============================================================
+
+export function bidShop(userId, shopId, termWeek, amountCoin) {
+  const amount = Number(amountCoin);
+  if (!Number.isInteger(amount) || amount <= 0) return { error: '出价必须为正整数', status: 400 };
+  const shop = db.prepare('SELECT * FROM market_shops WHERE id=?').get(shopId);
+  if (!shop) return { error: '店铺不存在', status: 404 };
+
+  const key = `shop_bid:${shopId}:${termWeek}:${userId}`;
+  const r = runTx(() => {
+    const existing = db.prepare('SELECT * FROM market_shop_bids WHERE shop_id=? AND term_week=? AND user_id=?').get(shopId, termWeek, userId);
+    let delta = amount;
+    if (existing) {
+      delta = amount - existing.amount_coin;
+      if (delta <= 0) return { ok: true, bid: existing };
+    }
+    const coin = applyCoinRaw({ fromUserId: userId, amount: delta, type: 'freeze', relatedType: 'market_shop_bid', relatedId: shopId, idempotencyKey: `${key}:${amount}` });
+    if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+
+    if (existing) {
+      db.prepare('UPDATE market_shop_bids SET amount_coin=?, frozen_total_coin=?, frozen_key=? WHERE id=?').run(amount, existing.frozen_total_coin + delta, `${key}:${amount}`, existing.id);
+    } else {
+      db.prepare("INSERT INTO market_shop_bids (shop_id, term_week, user_id, amount_coin, frozen_total_coin, frozen_key, idempotency_key, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)")
+        .run(shopId, termWeek, userId, amount, delta, `${key}:${amount}`, key, nowIso());
+    }
+    writeLedger({ sessionId: null, bizType: 'shop_bid', bizId: shopId, op: 'freeze', userId, amount: delta, coinTxId: coin.txId, idempotencyKey: `${key}:${amount}:ledger` });
+    return { ok: true };
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+export function settleShopTerms(termWeek) {
+  const shops = db.prepare('SELECT * FROM market_shops ORDER BY shop_no ASC').all();
+  const r = db.transaction(() => {
+    for (const shop of shops) {
+      const bids = db.prepare("SELECT * FROM market_shop_bids WHERE shop_id=? AND term_week=? AND status='active' ORDER BY amount_coin DESC, id ASC").all(shop.id, termWeek);
+      const winner = bids[0];
+      const term = db.prepare('SELECT * FROM market_shop_terms WHERE shop_id=? AND term_week=?').get(shop.id, termWeek);
+      if (winner && !term) {
+        db.prepare("INSERT INTO market_shop_terms (shop_id, term_week, owner_id, rent_coin, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)").run(shop.id, termWeek, winner.user_id, winner.amount_coin, nowIso());
+        // 中标：冻结全额作为租金（50% treasury / 50% sink）
+        const treasuryPart = Math.floor(winner.frozen_total_coin * cfg('stallFeeTreasuryRatio'));
+        const sinkPart = winner.frozen_total_coin - treasuryPart;
+        // 释放中标冻结（转成租金消耗）
+        const rf = applyCoinRaw({ fromUserId: winner.user_id, amount: winner.frozen_total_coin, type: 'refund', relatedType: 'market_shop_rent', relatedId: shop.id, idempotencyKey: `shop_rent:${shop.id}:${termWeek}:${winner.user_id}:unfreeze` });
+        if (rf.error) throwBiz(rf.code, rf.error, rf.status);
+        if (sinkPart > 0) applyCoinRaw({ fromUserId: winner.user_id, amount: sinkPart, type: 'sink', relatedType: 'market_shop_rent', relatedId: shop.id, idempotencyKey: `shop_rent:${shop.id}:${termWeek}:${winner.user_id}:sink` });
+        if (treasuryPart > 0) addTreasury(treasuryPart);
+        writeLedger({ sessionId: null, bizType: 'shop_rent', bizId: shop.id, op: 'charge', userId: winner.user_id, amount: winner.frozen_total_coin, idempotencyKey: `shop_rent:${shop.id}:${termWeek}:ledger` });
+        db.prepare("UPDATE market_shop_bids SET status='won' WHERE id=?").run(winner.id);
+      }
+      // 未中标：全额退款
+      for (const b of bids) {
+        if (winner && b.id === winner.id) continue;
+        const rk = `shop_bid_refund:${b.id}`;
+        const coin = applyCoinRaw({ fromUserId: b.user_id, amount: b.frozen_total_coin, type: 'refund', relatedType: 'market_shop_bid', relatedId: b.id, idempotencyKey: rk });
+        if (!coin.error) {
+          db.prepare("UPDATE market_shop_bids SET status='refunded' WHERE id=?").run(b.id);
+          writeLedger({ sessionId: null, bizType: 'shop_bid', bizId: b.id, op: 'refund', userId: b.user_id, amount: b.frozen_total_coin, coinTxId: coin.txId, idempotencyKey: `${rk}:ledger` });
+        }
+      }
+    }
+    return true;
+  })();
+  return { ok: true };
+}
+
+// ============================================================
+// 喇叭 / 纠纷 / 秒杀 / 结算
+// ============================================================
+
+export function broadcast(userId, sessionId, content, stallId = null) {
+  const session = getSession(sessionId);
+  if (!session) return { error: '期次不存在', status: 404 };
+  assertOpen(session);
+  const text = (content || '').toString().trim();
+  if (!text || text.length > 100) return { error: '喇叭内容需为 1-100 字', status: 400 };
+
+  const seq = db.prepare('SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM market_broadcasts WHERE session_id=? AND user_id=?').get(sessionId, userId).n;
+  if (seq > cfg('broadcastPerUserPerSession')) return { error: '本期喇叭已达上限', status: 409 };
+
+  const fee = cfg('broadcast_fee') ?? 0;
+  const key = `broadcast:${sessionId}:${userId}:${seq}`;
+  const r = runTx(() => {
+    if (fee > 0) {
+      const coin = applyCoinRaw({ fromUserId: userId, amount: fee, type: 'sink', relatedType: 'market_broadcast', relatedId: sessionId, idempotencyKey: key });
+      if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+      addTreasury(fee);
+      writeLedger({ sessionId, bizType: 'broadcast_fee', bizId: null, op: 'treasury_in', userId, amount: fee, idempotencyKey: `${key}:ledger` });
+    }
+    db.prepare("INSERT INTO market_broadcasts (session_id, user_id, seq, stall_id, content, fee_coin, status, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, 'published', ?, ?)")
+      .run(sessionId, userId, seq, stallId, text, fee, key, nowIso());
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+export function createDispute(reporterId, { orderId = null, itemId = null, type = 'report', reason, evidenceJson = null }) {
+  if (!reason || !(reason || '').toString().trim()) return { error: '请填写举报原因', status: 400 };
+  const reportKey = orderId ? `order:${orderId}:${reporterId}` : `item:${itemId}:${reporterId}`;
+  try {
+    db.prepare("INSERT INTO market_disputes (order_id, item_id, reporter_id, report_key, type, reason, evidence_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
+      .run(orderId, itemId, reporterId, reportKey, type, reason.trim(), evidenceJson, nowIso());
+    return { ok: true };
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return { error: '你已举报过该对象', status: 409 };
+    throw e;
+  }
+}
+
+export function resolveDispute(adminId, disputeId, outcome) {
+  const dispute = db.prepare('SELECT * FROM market_disputes WHERE id=?').get(disputeId);
+  if (!dispute) return { error: '纠纷不存在', status: 404 };
+  const r = runTx(() => {
+    db.prepare('UPDATE market_disputes SET status=?, resolved_by=?, resolved_at=? WHERE id=?').run(outcome, adminId, nowIso(), disputeId);
+    if (outcome === 'resolved_buyer' && dispute.order_id) {
+      // 扣卖家保证金赔付买家（简版：走 order refund）
+      const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(dispute.order_id);
+      if (order) {
+        const bc = db.prepare('SELECT * FROM market_blindbox_configs WHERE item_id=?').get(order.item_id);
+        if (bc) {
+          const itemSessionId = db.prepare('SELECT session_id FROM market_items WHERE id=?').get(order.item_id)?.session_id;
+          db.prepare("UPDATE market_blindbox_configs SET status='forfeited', penalty_coin=?, released_at=? WHERE item_id=? AND status='held'").run(bc.min_value_coin, nowIso(), order.item_id);
+          // 从卖家冻结保证金 transfer 给买家（frozen → coin）
+          const coin = applyCoinRaw({ fromUserId: order.seller_id, toUserId: order.buyer_id, amount: bc.min_value_coin, type: 'transfer', relatedType: 'market_dispute', relatedId: disputeId, idempotencyKey: `dispute:${disputeId}:compensate` });
+          if (!coin.error) writeLedger({ sessionId: itemSessionId, bizType: 'dispute_compensate', bizId: disputeId, op: 'compensate', userId: order.buyer_id, counterpartyId: order.seller_id, amount: bc.min_value_coin, coinTxId: coin.txId, idempotencyKey: `dispute:${disputeId}:compensate:ledger` });
+        }
+      }
+    }
+    return true;
+  });
+  if (r.error) return r;
+  return { ok: true };
+}
+
+// 官方秒杀：系统账号发布，差价补贴 treasury_out
+export function createFlashSale(adminId, { sessionId, title, priceCoin, stock, budget = null }) {
+  const session = getSession(sessionId);
+  if (!session) return { error: '期次不存在', status: 404 };
+  const price = Number(priceCoin);
+  if (!title || !Number.isInteger(price) || price <= 0 || !Number.isInteger(stock) || stock <= 0) return { error: '参数无效', status: 400 };
+  const key = `flash:${sessionId}:${randomBytes(8).toString('hex')}`;
+  const info = db.prepare("INSERT INTO market_items (session_id, seller_id, type, title, price_coin, stock, status, is_official, idempotency_key, created_at) VALUES (?, ?, 'flash_sale', ?, ?, ?, 'active', 1, ?, ?)")
+    .run(sessionId, adminId, title, price, stock, key, nowIso());
+  return { itemId: Number(info.lastInsertRowid) };
+}
+
+// 闭市结算（幂等，settle_key 兜底）
+export function settleSession(sessionId) {
+  const session = getSession(sessionId);
+  if (!session) return { error: '期次不存在', status: 404 };
+  if (session.settled_at) return { ok: true, settled: false };
+
+  const key = `settle:${sessionId}`;
+  const r = runTx(() => {
+    const up = db.prepare('UPDATE market_sessions SET settle_key=?, settle_at=? WHERE id=? AND settle_key IS NULL').run(key, nowIso(), sessionId);
+    if (up.changes === 0) return { settled: false };
+
+    // 未售商品过期
+    db.prepare("UPDATE market_items SET status='expired' WHERE session_id=? AND status IN ('active','reserved')").run(sessionId);
+    // 未接受砍价过期 + 退款
+    const pendingBargains = db.prepare("SELECT * FROM market_bargains WHERE item_id IN (SELECT id FROM market_items WHERE session_id=?) AND status='pending'").all(sessionId);
+    for (const b of pendingBargains) {
+      const rk = `bargain:${b.id}:settle-expire`;
+      const coin = applyCoinRaw({ fromUserId: b.buyer_id, amount: b.offer_coin, type: 'refund', relatedType: 'market_bargain', relatedId: b.id, idempotencyKey: rk });
+      if (!coin.error) {
+        db.prepare("UPDATE market_bargains SET status='expired' WHERE id=?").run(b.id);
+        writeLedger({ sessionId, bizType: 'bargain_unfreeze', bizId: b.id, op: 'refund', userId: b.buyer_id, amount: b.offer_coin, coinTxId: coin.txId, idempotencyKey: `${rk}:ledger` });
+      }
+    }
+    // 流动地摊押金退还
+    const stalls = db.prepare("SELECT * FROM market_stalls WHERE session_id=? AND status IN ('occupied','expired')").all(sessionId);
+    for (const s of stalls) {
+      if (s.owner_id && s.deposit_coin > 0) {
+        const rk = `stall_deposit_refund:${s.id}`;
+        const coin = applyCoinRaw({ fromUserId: s.owner_id, amount: s.deposit_coin, type: 'refund', relatedType: 'market_stall_deposit', relatedId: s.id, idempotencyKey: rk });
+        if (!coin.error) writeLedger({ sessionId, bizType: 'stall_refund', bizId: s.id, op: 'refund', userId: s.owner_id, amount: s.deposit_coin, coinTxId: coin.txId, idempotencyKey: `${rk}:ledger` });
+      }
+    }
+    db.prepare("UPDATE market_sessions SET status='settled' WHERE id=?").run(sessionId);
+    return { settled: true };
+  });
+  if (r.error) return r;
+  return { ok: true, settled: r.value.settled };
+}
+
+// ============================================================
+// 路由
+// ============================================================
+
+router.get('/market/session', (req, res) => {
+  const session = currentSession();
+  res.json({
+    session,
+    serverTime: nowIso(),
+    treasury: treasuryBalance(),
+    config: {
+      depositCoin: cfg('depositCoin'),
+      broadcastFee: cfg('broadcast_fee') ?? 0,
+      flashSaleBudget: cfg('flashSaleBudget'),
+      tradeFeeRate: cfg('tradeFeeRate') ?? config.coin.tradeFeeRate,
+    },
+  });
+});
+
+router.get('/market/stalls', (req, res) => {
+  const sessionId = Number(req.query.sessionId) || currentSession()?.id;
+  const stalls = db.prepare('SELECT * FROM market_stalls WHERE session_id=? ORDER BY stall_no ASC').all(sessionId);
+  res.json(stalls);
+});
+
+router.get('/market/orders/mine', (req, res) => {
+  const bought = db.prepare('SELECT o.*, i.title, i.type AS item_type FROM market_orders o JOIN market_items i ON i.id=o.item_id WHERE o.buyer_id=? ORDER BY o.id DESC').all(req.user.id);
+  const sold = db.prepare('SELECT o.*, i.title, i.type AS item_type FROM market_orders o JOIN market_items i ON i.id=o.item_id WHERE o.seller_id=? ORDER BY o.id DESC').all(req.user.id);
+  res.json({ bought, sold });
+});
+
+router.get('/market/shops', (req, res) => {
+  const shops = db.prepare('SELECT * FROM market_shops ORDER BY sort_order ASC').all();
+  const terms = db.prepare("SELECT * FROM market_shop_terms WHERE status='active'").all();
+  const termMap = new Map(terms.map((t) => [t.shop_id, t]));
+  res.json(shops.map((s) => ({ ...s, term: termMap.get(s.id) || null })));
+});
+
+router.post('/market/sessions', requireRole('admin'), (req, res) => {
+  const r = createSession(req.body?.openAt);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.status(201).json(r.session);
+});
+
+router.post('/market/stalls/signup', requireRole('student', 'admin'), (req, res) => {
+  const r = signupStall(req.user.id, Number(req.body?.sessionId));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/stalls/grab', requireRole('student', 'admin'), (req, res) => {
+  const r = grabStall(req.user.id, Number(req.body?.sessionId));
+  if (r.error) return res.status(r.status).json({ error: r.error, code: r.code });
+  res.json(r);
+});
+
+router.post('/market/stalls/:id/confirm', requireRole('student', 'admin'), (req, res) => {
+  const r = confirmStall(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error, code: r.code });
+  res.json(r);
+});
+
+router.post('/market/stalls/:id/release', requireRole('student', 'admin'), (req, res) => {
+  const r = releaseStall(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.get('/market/items', (req, res) => {
+  const sessionId = Number(req.query.sessionId) || currentSession()?.id;
+  const rows = db.prepare("SELECT i.*, u.nickname AS seller_name, u.avatar AS seller_avatar FROM market_items i JOIN users u ON u.id=i.seller_id WHERE i.session_id=? AND i.status IN ('active','reserved') ORDER BY i.id DESC").all(sessionId);
+  res.json(rows.map(mapItem));
+});
+
+router.post('/market/items', requireRole('student', 'admin'), (req, res) => {
+  const r = createItem(req.user.id, req.body || {});
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.status(201).json({ itemId: r.itemId });
+});
+
+router.post('/market/items/:id/list', requireRole('student', 'admin'), (req, res) => {
+  const r = listItem(req.user.id, Number(req.params.id), req.body || {});
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/items/:id/remove', requireRole('student', 'admin'), (req, res) => {
+  const r = removeItem(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/items/:id/buy', requireRole('student', 'admin'), (req, res) => {
+  const r = buyItem(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error, code: r.code });
+  res.json(r);
+});
+
+router.post('/market/items/:id/bargains', requireRole('student', 'admin'), (req, res) => {
+  const r = createBargain(req.user.id, Number(req.params.id), req.body?.offerCoin);
+  if (r.error) return res.status(r.status).json({ error: r.error, code: r.code });
+  res.json(r);
+});
+
+router.post('/market/bargains/:id/accept', requireRole('student', 'admin'), (req, res) => {
+  const r = acceptBargain(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error, code: r.code });
+  res.json(r);
+});
+
+router.post('/market/bargains/:id/reject', requireRole('student', 'admin'), (req, res) => {
+  const r = rejectBargain(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/orders/:id/pay', requireRole('student', 'admin'), (req, res) => {
+  const r = payOrder(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/orders/:id/deliver', requireRole('student', 'admin'), (req, res) => {
+  const r = deliverOrder(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/orders/:id/confirm', requireRole('student', 'admin'), (req, res) => {
+  const r = confirmOrder(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/orders/:id/cancel', requireRole('student', 'admin'), (req, res) => {
+  const r = cancelOrder(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/orders/:id/open', requireRole('student', 'admin'), (req, res) => {
+  const r = openBlindbox(req.user.id, Number(req.params.id));
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/disputes', requireRole('student', 'admin'), (req, res) => {
+  const r = createDispute(req.user.id, req.body || {});
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.status(201).json(r);
+});
+
+router.post('/market/disputes/:id/resolve', requireRole('admin'), (req, res) => {
+  const r = resolveDispute(req.user.id, Number(req.params.id), req.body?.outcome);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/broadcasts', requireRole('student', 'admin'), (req, res) => {
+  const r = broadcast(req.user.id, Number(req.body?.sessionId), req.body?.content, req.body?.stallId);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.status(201).json(r);
+});
+
+router.post('/market/shops/:id/bids', requireRole('student', 'admin'), (req, res) => {
+  const r = bidShop(req.user.id, Number(req.params.id), req.body?.termWeek, req.body?.amountCoin);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.json(r);
+});
+
+router.post('/market/flash', requireRole('admin'), (req, res) => {
+  const r = createFlashSale(req.user.id, req.body || {});
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  res.status(201).json(r);
+});
+
+export default router;

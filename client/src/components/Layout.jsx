@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
+import { socket } from '../socket.js';
 import { useUser } from '../UserContext.jsx';
 import MapEngine from './MapEngine.jsx';
 import AreaDialog from './AreaDialog.jsx';
@@ -103,6 +104,42 @@ export default function Layout({ children }) {
     toastTimer.current = setTimeout(() => setToast(null), 2400);
   };
 
+  // 成就解锁 Toast（socket 推送）
+  const [achToast, setAchToast] = useState(null);
+  const achTimer = useRef(null);
+  useEffect(() => {
+    const onAch = (a) => {
+      setAchToast(a);
+      clearTimeout(achTimer.current);
+      achTimer.current = setTimeout(() => setAchToast(null), 4200);
+    };
+    socket.on('achievement:unlocked', onAch);
+    return () => socket.off('achievement:unlocked', onAch);
+  }, []);
+
+  // EXP_015 摸鱼先锋：60 分钟无交互（每天最多触发一次）
+  useEffect(() => {
+    if (!user) return;
+    const IDLE_MS = 60 * 60 * 1000;
+    let timer = null;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const today = new Date().toDateString();
+        if (localStorage.getItem('ach_idle_last') === today) return;
+        localStorage.setItem('ach_idle_last', today);
+        api.triggerAchievement('EXP_015').catch(() => {});
+      }, IDLE_MS);
+    };
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel'];
+    events.forEach((e) => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => {
+      clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, reset));
+    };
+  }, [user?.id]);
+
   useEffect(() => {
     api
       .campuses()
@@ -137,10 +174,7 @@ export default function Layout({ children }) {
     say(`已切换地图：${next.name}`);
   };
   const switchWorld = () => say('「换世界观」还未开发');
-  const gacha = () => {
-    const prizes = ['SSR 星辉剑姬', 'SR 霜语者', 'SSR 龙裔·烬', 'R 见习法师', 'SR 观星术士'];
-    say(`✨ ${prizes[Math.floor(Math.random() * prizes.length)]} 加入队伍！（卡池功能未开发）`);
-  };
+  const gacha = () => navigate('/lottery');
 
   return (
     <div className="hud-root">
@@ -188,6 +222,8 @@ export default function Layout({ children }) {
           <QuickBar
             activeCampus={activeCampus}
             onTasks={() => navigate('/tasks')}
+            onSignin={() => navigate('/signin')}
+            onMarket={() => navigate('/market')}
             onBag={() => say('「背包」还未开发')}
             onSettings={() => navigate('/settings')}
           />
@@ -217,6 +253,16 @@ export default function Layout({ children }) {
 
       {/* Toast / 错误 */}
       {toast && <div className="toast">{toast}</div>}
+      {achToast && (
+        <div className="ach-toast">
+          <div className="ach-toast-icon">{achToast.icon || '🏅'}</div>
+          <div className="ach-toast-body">
+            <div className="ach-toast-head">ACHIEVEMENT UNLOCKED</div>
+            <div className="ach-toast-name">{achToast.name}</div>
+            <div className="ach-toast-desc">{achToast.description}</div>
+          </div>
+        </div>
+      )}
       {error && (
         <div className="toast" style={{ background: 'rgba(120, 22, 22, 0.94)' }}>
           {error}

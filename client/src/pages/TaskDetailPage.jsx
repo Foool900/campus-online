@@ -171,7 +171,7 @@ export default function TaskDetailPage() {
                   <span>{task?.assigneeId ? `${task.assigneeAvatar || '🎓'} ${task.assigneeName}` : '暂无'}</span>
                   {role === 'assignee' && <span className="act-admin-badge">接取者</span>}
                 </div>
-                <div className="act-info-row"><span className="act-info-label">奖励</span><span className="reward-chip">+{task?.rewardExp ?? 0} XP</span></div>
+                <div className="act-info-row"><span className="act-info-label">奖励</span><span className="reward-chip">+{task?.rewardCoin ?? 0} 金币</span></div>
                 <div className="act-info-row"><span className="act-info-label">发布时间</span><span>{formatTime(task?.createdAt)}</span></div>
                 {task?.deadlineAt && <div className="act-info-row"><span className="act-info-label">截止时间</span><span>{formatTime(task.deadlineAt)}</span></div>}
                 {task?.minCompleteAt && task.status === 'accepted' && (

@@ -30,13 +30,13 @@ function seedWorld() {
 seedWorld();
 
 let seq = 0;
-function makeUser(exp = 0, avail = exp, frozen = 0) {
+function makeUser(exp = 0, coin = exp, frozenCoin = 0) {
   seq += 1;
   const info = db
     .prepare(
-      "INSERT INTO users (nickname, college, avatar, exp, available_exp, frozen_exp, role, created_at) VALUES (?, '计算机与信息工程学院', '🎓', ?, ?, ?, 'student', ?)"
+      "INSERT INTO users (nickname, college, avatar, exp, coin, frozen_coin, role, created_at) VALUES (?, '计算机与信息工程学院', '🎓', ?, ?, ?, 'student', ?)"
     )
-    .run(`测试用户${seq}`, exp, avail, frozen, nowIso());
+    .run(`测试用户${seq}`, exp, coin, frozenCoin, nowIso());
   return Number(info.lastInsertRowid);
 }
 
@@ -46,7 +46,7 @@ function u(id) {
 }
 
 function acct(id) {
-  return db.prepare('SELECT exp AS totalExp, available_exp AS availableExp, frozen_exp AS frozenExp FROM users WHERE id = ?').get(id);
+  return db.prepare('SELECT exp, coin, frozen_coin AS frozenCoin FROM users WHERE id = ?').get(id);
 }
 
 function pub(publisherId, reward, opts = {}) {
@@ -55,7 +55,7 @@ function pub(publisherId, reward, opts = {}) {
     title: opts.title || '测试公开任务',
     description: opts.description || '',
     tags: opts.tags || [],
-    rewardExp: reward,
+    rewardCoin: reward,
     deadlineAt: opts.deadlineAt || null,
   });
 }
@@ -68,10 +68,10 @@ function allowSubmit(taskId) {
 
 test('private 发布：奖励恒 0，todo ↔ done 可撤销', () => {
   const uid = makeUser(0, 0);
-  const r = publishTask(u(uid), { type: 'private', title: '背单词', rewardExp: 999 });
+  const r = publishTask(u(uid), { type: 'private', title: '背单词', rewardCoin: 999 });
   assert.equal(r.error, undefined);
   assert.equal(r.task.type, 'private');
-  assert.equal(r.task.rewardExp, 0);
+  assert.equal(r.task.rewardCoin, 0);
   assert.equal(r.task.status, 'todo');
 
   const done = toggleTaskDone(u(uid), r.task.id);
@@ -83,27 +83,37 @@ test('private 发布：奖励恒 0，todo ↔ done 可撤销', () => {
   assert.equal(back.task.finishedAt, null);
 });
 
+test('private 完成发行为经验，且幂等（撤销重打不重复）', () => {
+  const uid = makeUser(0, 0);
+  const t = publishTask(u(uid), { type: 'private', title: '记笔记' }).task;
+  toggleTaskDone(u(uid), t.id);
+  assert.equal(acct(uid).exp, config.exp.todoComplete);
+  toggleTaskDone(u(uid), t.id); // 撤销
+  toggleTaskDone(u(uid), t.id); // 再完成
+  assert.equal(acct(uid).exp, config.exp.todoComplete); // 仍只发一次
+});
+
 // ============ 发布与冻结 ============
 
-test('public 发布：冻结奖励额，available↓ frozen↑ total 不变', () => {
+test('public 发布：冻结赏金，coin↓ frozenCoin↑ exp 不变', () => {
   const uid = makeUser(1000, 500, 0);
   const r = pub(uid, 100);
   assert.equal(r.error, undefined);
   assert.equal(r.task.status, 'published');
-  assert.equal(r.task.rewardExp, 100);
+  assert.equal(r.task.rewardCoin, 100);
   const a = acct(uid);
-  assert.equal(a.availableExp, 400);
-  assert.equal(a.frozenExp, 100);
-  assert.equal(a.totalExp, 1000);
+  assert.equal(a.coin, 400);
+  assert.equal(a.frozenCoin, 100);
+  assert.equal(a.exp, 1000);
 });
 
-test('public 发布：奖励超过单任务上限被拒绝', () => {
+test('public 发布：赏金超过单任务上限被拒绝', () => {
   const uid = makeUser(1000, 100, 0); // cap = min(100×20%, 500) = 20
   const r = pub(uid, 30);
   assert.equal(r.code, 'EX_REWARD_OVER_CAP');
   const a = acct(uid);
-  assert.equal(a.availableExp, 100);
-  assert.equal(a.frozenExp, 0);
+  assert.equal(a.coin, 100);
+  assert.equal(a.frozenCoin, 0);
 });
 
 test('不能接取自己发布的任务', () => {
@@ -115,7 +125,7 @@ test('不能接取自己发布的任务', () => {
 
 // ============ 全流程 ============
 
-test('发布→接取→提交→通过：经验准确划转，发布者冻结清零', () => {
+test('发布→接取→提交→通过：金币划转 + 接取者行为经验', () => {
   const pubId = makeUser(1000, 500, 0);
   const assigneeId = makeUser(0, 0, 0);
 
@@ -133,11 +143,11 @@ test('发布→接取→提交→通过：经验准确划转，发布者冻结�
 
   const p = acct(pubId);
   const a = acct(assigneeId);
-  assert.equal(p.frozenExp, 0);
-  assert.equal(p.availableExp, 420);
-  assert.equal(p.totalExp, 1000);
-  assert.equal(a.totalExp, 80);
-  assert.equal(a.availableExp, 80);
+  assert.equal(p.frozenCoin, 0);
+  assert.equal(p.coin, 420);
+  assert.equal(p.exp, 1000);
+  assert.equal(a.coin, 80);
+  assert.equal(a.exp, config.exp.taskComplete);
 });
 
 test('最短完成时间内提交被拒绝', () => {
@@ -161,7 +171,7 @@ test('提交缺少凭证被拒绝', () => {
 
 // ============ 驳回 / 终止 ============
 
-test('驳回：非终态回 accepted 可重交，达到上限终止并退经验', () => {
+test('驳回：非终态回 accepted 可重交，达到上限终止并退赏金', () => {
   const pubId = makeUser(1000, 500, 0);
   const assigneeId = makeUser(0, 0, 0);
   const t = pub(pubId, 50).task;
@@ -172,7 +182,7 @@ test('驳回：非终态回 accepted 可重交，达到上限终止并退经验'
   const r1 = rejectTask(u(pubId), t.id, {});
   assert.equal(r1.task.status, 'accepted');
   assert.equal(r1.task.rejectCount, 1);
-  assert.equal(acct(pubId).frozenExp, 50);
+  assert.equal(acct(pubId).frozenCoin, 50);
 
   submitTask(u(assigneeId), t.id, { text: '第二次' });
   const r2 = rejectTask(u(pubId), t.id, {});
@@ -184,8 +194,8 @@ test('驳回：非终态回 accepted 可重交，达到上限终止并退经验'
   assert.equal(r3.task.status, 'terminated');
   assert.equal(r3.task.rejectCount, 3);
   const p = acct(pubId);
-  assert.equal(p.frozenExp, 0);
-  assert.equal(p.availableExp, 500);
+  assert.equal(p.frozenCoin, 0);
+  assert.equal(p.coin, 500);
 });
 
 // ============ 放弃 / 取消 / 过期 ============
@@ -198,35 +208,35 @@ test('接取者放弃：accepted → published，冻结不变', () => {
   const r = abandonTask(u(assigneeId), t.id);
   assert.equal(r.task.status, 'published');
   assert.equal(r.task.assigneeId, null);
-  assert.equal(acct(pubId).frozenExp, 30);
+  assert.equal(acct(pubId).frozenCoin, 30);
 });
 
-test('发布者取消：退经验', () => {
+test('发布者取消：退赏金', () => {
   const pubId = makeUser(1000, 500, 0);
   const t = pub(pubId, 60).task;
   const r = cancelTask(u(pubId), t.id);
   assert.equal(r.task.status, 'cancelled');
   const p = acct(pubId);
-  assert.equal(p.frozenExp, 0);
-  assert.equal(p.availableExp, 500);
+  assert.equal(p.frozenCoin, 0);
+  assert.equal(p.coin, 500);
 });
 
-test('到期未接：expired + 退经验', () => {
+test('到期未接：expired + 退赏金', () => {
   const pubId = makeUser(1000, 500, 0);
   const t = pub(pubId, 70, { deadlineAt: new Date(Date.now() - 60000).toISOString() }).task;
   const handled = expireOverdueTasks(null);
   assert.ok(handled >= 1);
   assert.equal(getTaskDetail(pubId, t.id).task.status, 'expired');
   const p = acct(pubId);
-  assert.equal(p.frozenExp, 0);
-  assert.equal(p.availableExp, 500);
+  assert.equal(p.frozenCoin, 0);
+  assert.equal(p.coin, 500);
 });
 
 // ============ 每日上限 ============
 
 test('同一对用户每日往来次数超限被拒绝', () => {
-  const prev = config.reward.dailyPairTransfer;
-  config.reward.dailyPairTransfer = 1;
+  const prev = config.coin.dailyPairTransfer;
+  config.coin.dailyPairTransfer = 1;
   try {
     const pubId = makeUser(10000, 5000, 0);
     const assigneeId = makeUser(0, 0, 0);
@@ -244,15 +254,15 @@ test('同一对用户每日往来次数超限被拒绝', () => {
     const r2 = approveTask(u(pubId), t2.id, {});
     assert.equal(r2.code, 'EX_DAILY_PAIR');
   } finally {
-    config.reward.dailyPairTransfer = prev;
+    config.coin.dailyPairTransfer = prev;
   }
 });
 
-test('接取者每日获得经验超限被拒绝', () => {
-  const prevAccept = config.reward.dailyAccept;
-  const prevPair = config.reward.dailyPairTransfer;
-  config.reward.dailyAccept = 40;
-  config.reward.dailyPairTransfer = 100;
+test('接取者每日获得金币超限被拒绝', () => {
+  const prevAccept = config.coin.dailyAccept;
+  const prevPair = config.coin.dailyPairTransfer;
+  config.coin.dailyAccept = 40;
+  config.coin.dailyPairTransfer = 100;
   try {
     const pubId = makeUser(10000, 5000, 0);
     const assigneeId = makeUser(0, 0, 0);
@@ -262,11 +272,12 @@ test('接取者每日获得经验超限被拒绝', () => {
     submitTask(u(assigneeId), t.id, { text: 'ok' });
     const r = approveTask(u(pubId), t.id, {});
     assert.equal(r.code, 'EX_DAILY_ACCEPT');
-    assert.equal(acct(assigneeId).totalExp, 0);
-    assert.equal(acct(pubId).frozenExp, 50);
+    assert.equal(acct(assigneeId).coin, 0);
+    assert.equal(acct(assigneeId).exp, 0);
+    assert.equal(acct(pubId).frozenCoin, 50);
   } finally {
-    config.reward.dailyAccept = prevAccept;
-    config.reward.dailyPairTransfer = prevPair;
+    config.coin.dailyAccept = prevAccept;
+    config.coin.dailyPairTransfer = prevPair;
   }
 });
 

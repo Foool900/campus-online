@@ -45,7 +45,7 @@ export default function TasksPage() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [wallet, setWallet] = useState(null);
-  const [expConfig, setExpConfig] = useState(null);
+  const [coinConfig, setCoinConfig] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
   const [pubOpen, setPubOpen] = useState(false);
@@ -53,12 +53,12 @@ export default function TasksPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
-  const [rewardExp, setRewardExp] = useState('0');
+  const [rewardCoin, setRewardCoin] = useState('0');
   const [deadlineAt, setDeadlineAt] = useState('');
 
   useEffect(() => {
     api.wallet().then(setWallet).catch(() => {});
-    api.expConfig().then(setExpConfig).catch(() => {});
+    api.coinConfig().then(setCoinConfig).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -81,8 +81,8 @@ export default function TasksPage() {
   const refresh = () => api.tasks(filter).then(setTasks).catch(() => {});
 
   const rewardCap =
-    wallet && expConfig
-      ? Math.min(Math.floor(wallet.availableExp * expConfig.reward.capRatio), expConfig.reward.capAbsolute)
+    wallet && coinConfig
+      ? Math.min(Math.floor(wallet.coin * coinConfig.capRatio), coinConfig.capAbsolute)
       : null;
 
   const createTask = async (e) => {
@@ -93,20 +93,20 @@ export default function TasksPage() {
       return;
     }
     const tagList = tags.split(/[,，\s]+/).filter(Boolean).slice(0, 5);
-    const reward = type === 'private' ? 0 : Math.max(0, Number(rewardExp) || 0);
+    const reward = type === 'private' ? 0 : Math.max(0, Number(rewardCoin) || 0);
     try {
       const created = await api.createTask({
         type,
         title: t,
         description: description.trim(),
         tags: tagList,
-        rewardExp: reward,
+        rewardCoin: reward,
         deadlineAt: deadlineAt || null,
       });
       setTitle('');
       setDescription('');
       setTags('');
-      setRewardExp('0');
+      setRewardCoin('0');
       setDeadlineAt('');
       setPubOpen(false);
       refreshWallet();
@@ -135,14 +135,14 @@ export default function TasksPage() {
           <div className="task-wallet">
             <span>[ PILOT_LV: <span className="tw-val">{pad2(wallet.level)}</span> ]</span>
             <span className="tw-sep">|</span>
-            <span>[ EXP_TOTAL: <span className="tw-val">{wallet.totalExp}</span> ]</span>
+            <span>[ EXP: <span className="tw-val">{wallet.exp}</span> ]</span>
             <span className="tw-sep">|</span>
-            <span>[ EXP_FREE: <span className="tw-val">{wallet.availableExp}</span> ]</span>
+            <span>[ COIN: <span className="tw-val">{wallet.coin}</span> ]</span>
             <span className="tw-sep">|</span>
-            <span>[ EXP_FROZEN: <span className="tw-val">{wallet.frozenExp}</span> ]</span>
+            <span>[ FROZEN: <span className="tw-val">{wallet.frozenCoin}</span> ]</span>
           </div>
           <div className="task-exp-bar">
-            <i style={{ width: `${wallet.totalExp % 100}%` }} />
+            <i style={{ width: `${wallet.exp % 100}%` }} />
           </div>
         </>
       )}
@@ -167,27 +167,27 @@ export default function TasksPage() {
                 value={type}
                 onChange={(e) => {
                   setType(e.target.value);
-                  if (e.target.value === 'private') setRewardExp('0');
+                  if (e.target.value === 'private') setRewardCoin('0');
                 }}
               >
-                <option value="public">公开任务（可设经验奖励）</option>
+                <option value="public">公开任务（可设金币奖励）</option>
                 <option value="private">私密备忘（仅自己可见，无奖励）</option>
               </select>
             </div>
             <div className="field">
-              <label>经验奖励</label>
+              <label>金币奖励</label>
               <input
                 type="number"
                 min="0"
                 max={rewardCap ?? 500}
-                value={type === 'private' ? '0' : rewardExp}
-                onChange={(e) => setRewardExp(e.target.value)}
+                value={type === 'private' ? '0' : rewardCoin}
+                onChange={(e) => setRewardCoin(e.target.value)}
                 disabled={type === 'private'}
               />
               {type === 'private' ? (
                 <small style={{ color: 'var(--muted)' }}>私密备忘无奖励</small>
               ) : rewardCap != null ? (
-                <small style={{ color: 'var(--muted)' }}>单任务上限 {rewardCap}（可用 {wallet.availableExp}）</small>
+                <small style={{ color: 'var(--muted)' }}>单任务上限 {rewardCap}（金币 {wallet.coin}）</small>
               ) : null}
             </div>
             <div className="field">
@@ -239,7 +239,7 @@ export default function TasksPage() {
                 </div>
               )}
               <div className="todo-meta" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span className="reward-chip">+{t.rewardExp} XP</span>
+                <span className="reward-chip">+{t.rewardCoin} 金币</span>
                 <span className="meta-item">PUB {t.publisherName}</span>
                 {t.assigneeId && <span className="meta-item">ASG {t.assigneeName}</span>}
                 {t.deadlineAt && <span className="meta-item">DL {formatTime(t.deadlineAt)}</span>}

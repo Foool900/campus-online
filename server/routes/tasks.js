@@ -3,6 +3,8 @@ import { db, nowIso } from '../db.js';
 import { requireRole } from '../auth.js';
 import { config, levelOf, taskRewardCap, dailyPublishCap } from '../config.js';
 import { applyExpRaw } from '../exp.js';
+import { applyCoinRaw } from '../coin.js';
+import { triggerAchievement } from '../achievements.js';
 import {
   worldChannelId,
   listConversationMessages,
@@ -24,6 +26,17 @@ function dayStartIso() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
+}
+
+// 行为经验发放（带每日上限 + 幂等）。返回 true=已发，false=超限跳过。
+function grantBehaviorExp(toUserId, amount, { relatedId, idempotencyKey }) {
+  const dayStart = dayStartIso();
+  const earned = db
+    .prepare("SELECT COALESCE(SUM(amount), 0) AS s FROM exp_transactions WHERE to_user_id = ? AND type = 'grant' AND source = 'behavior' AND created_at >= ?")
+    .get(toUserId, dayStart).s;
+  if (earned + amount > config.exp.dailyCap) return false;
+  const r = applyExpRaw({ toUserId, amount, source: 'behavior', relatedId, idempotencyKey });
+  return !r.error;
 }
 
 function parseJson(s, fallback = null) {
@@ -54,7 +67,7 @@ function mapTask(row) {
     title: row.title,
     description: row.description,
     tags: parseJson(row.tags, []),
-    rewardExp: row.reward_exp,
+    rewardCoin: row.reward_coin,
     status: row.status,
     minCompleteAt: row.min_complete_at,
     deadlineAt: row.deadline_at,
@@ -138,13 +151,26 @@ function emitTaskChanged(req, taskId, sys) {
   io.to(`task:${taskId}`).emit('task:status', { taskId, status: task.status, task });
 }
 
+// 触发式成就：幂等触发并收集（阈值判断由调用方完成）
+function collectAchievement(list, userId, code) {
+  const a = triggerAchievement(userId, code);
+  if (a) list.push({ userId, code: a.code, name: a.name, icon: a.icon, description: a.description });
+}
+function notifyUnlocked(req, unlocked) {
+  const io = req.app.get('io');
+  if (!io || !unlocked?.length) return;
+  for (const u of unlocked) {
+    io.to(`user:${u.userId}`).emit('achievement:unlocked', { code: u.code, name: u.name, icon: u.icon, description: u.description });
+  }
+}
+
 // ============================================================
 // 业务函数（导出供单测；路由层做薄包装 + 权限 + socket 推送）
 // ============================================================
 
 // 发布任务。返回 { task, sys } 或 { error, code, status }
 export function publishTask(user, payload) {
-  const { type, title, description, tags, rewardExp, deadlineAt } = payload || {};
+  const { type, title, description, tags, rewardCoin, deadlineAt } = payload || {};
   const uid = user.id;
 
   if (!TASK_TYPES.includes(type)) return { error: '任务类型无效', code: 'EX_TASK_TYPE', status: 400 };
@@ -173,34 +199,39 @@ export function publishTask(user, payload) {
   if (type === 'private') {
     const info = db
       .prepare(
-        `INSERT INTO tasks (publisher_id, type, title, description, tags, reward_exp, status, deadline_at, created_at)
+        `INSERT INTO tasks (publisher_id, type, title, description, tags, reward_coin, status, deadline_at, created_at)
          VALUES (?, 'private', ?, ?, ?, 0, 'todo', ?, ?)`
       )
       .run(uid, t, desc, tagsJson, deadline, nowIso());
-    return { task: mapTask(getTask(info.lastInsertRowid)), sys: null };
+    const unlocked = [];
+    const privCount = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE publisher_id = ? AND type = 'private'").get(uid).c;
+    if (privCount >= 20) collectAchievement(unlocked, uid, 'EXP_007');
+    return { task: mapTask(getTask(info.lastInsertRowid)), sys: null, unlocked };
   }
 
   // ===== 公开任务 =====
-  const reward = rewardExp === undefined || rewardExp === null ? 0 : Number(rewardExp);
+  const reward = rewardCoin === undefined || rewardCoin === null ? 0 : Number(rewardCoin);
   if (!Number.isInteger(reward) || reward < 0) {
-    return { error: '奖励经验无效', code: 'EX_REWARD_INVALID', status: 400 };
+    return { error: '奖励金币无效', code: 'EX_REWARD_INVALID', status: 400 };
   }
 
-  const me = db.prepare('SELECT exp, available_exp FROM users WHERE id = ?').get(uid);
-  const cap = taskRewardCap(me.available_exp);
+  const me = db.prepare('SELECT exp, coin FROM users WHERE id = ?').get(uid);
+  const cap = taskRewardCap(me.coin);
   if (reward > cap) {
-    return { error: `单任务奖励不能超过 ${cap}（可用经验 ${me.available_exp}）`, code: 'EX_REWARD_OVER_CAP', status: 400 };
+    const unlocked = [];
+    if (me.coin === 0) collectAchievement(unlocked, uid, 'EXP_008');
+    return { error: `单任务赏金不能超过 ${cap}（金币余额 ${me.coin}）`, code: 'EX_REWARD_OVER_CAP', status: 400, unlocked };
   }
 
   // 每日发布额度 / 数量
   const dayStart = dayStartIso();
   const level = levelOf(me.exp);
-  const publishExpCap = dailyPublishCap(level);
-  const usedExp = db
-    .prepare("SELECT COALESCE(SUM(reward_exp), 0) AS s FROM tasks WHERE publisher_id = ? AND type = 'public' AND created_at >= ?")
+  const publishCoinCap = dailyPublishCap(level);
+  const usedCoin = db
+    .prepare("SELECT COALESCE(SUM(reward_coin), 0) AS s FROM tasks WHERE publisher_id = ? AND type = 'public' AND created_at >= ?")
     .get(uid, dayStart).s;
-  if (usedExp + reward > publishExpCap) {
-    return { error: `今日发布经验额度已满（${usedExp}/${publishExpCap}）`, code: 'EX_DAILY_PUBLISH_EXP', status: 400 };
+  if (usedCoin + reward > publishCoinCap) {
+    return { error: `今日发布赏金额度已满（${usedCoin}/${publishCoinCap}）`, code: 'EX_DAILY_PUBLISH_COIN', status: 400 };
   }
   const publishCount = db
     .prepare("SELECT COUNT(*) AS c FROM tasks WHERE publisher_id = ? AND type = 'public' AND created_at >= ?")
@@ -214,16 +245,16 @@ export function publishTask(user, payload) {
   const result = runTx(() => {
     const info = db
       .prepare(
-        `INSERT INTO tasks (publisher_id, type, title, description, tags, reward_exp, status, min_complete_at, deadline_at, created_at)
+        `INSERT INTO tasks (publisher_id, type, title, description, tags, reward_coin, status, min_complete_at, deadline_at, created_at)
          VALUES (?, 'public', ?, ?, ?, ?, 'published', ?, ?, ?)`
       )
       .run(uid, t, desc, tagsJson, reward, minCompleteAt, deadline, nowIso());
     const taskId = Number(info.lastInsertRowid);
 
-    // 发布即冻结奖励额（幂等键 task:{id}:freeze）
+    // 发布即冻结赏金（幂等键 task:{id}:freeze）
     if (reward > 0) {
-      const exp = applyExpRaw({ fromUserId: uid, amount: reward, type: 'freeze', idempotencyKey: `task:${taskId}:freeze`, taskId });
-      if (exp.error) throwErr(exp.code, exp.error, exp.status);
+      const coin = applyCoinRaw({ fromUserId: uid, amount: reward, type: 'freeze', relatedType: 'task', relatedId: taskId, idempotencyKey: `task:${taskId}:freeze` });
+      if (coin.error) throwErr(coin.code, coin.error, coin.status);
     }
 
     const sys = insertTaskSystemMessage(taskId, uid, `${user.nickname} 发布了公开任务`);
@@ -231,7 +262,10 @@ export function publishTask(user, payload) {
   });
 
   if (result.error) return result;
-  return result.value;
+  const unlocked = [];
+  const totalReward = db.prepare("SELECT COALESCE(SUM(reward_coin), 0) AS s FROM tasks WHERE publisher_id = ? AND type = 'public'").get(uid).s;
+  if (totalReward >= 1000) collectAchievement(unlocked, uid, 'EXP_006');
+  return { ...result.value, unlocked };
 }
 
 // 列表。filter: public | mine | assigned | private
@@ -327,34 +361,36 @@ export function approveTask(user, taskId, ctx = {}) {
     if (task.publisher_id !== user.id) throwErr('EX_NOT_PUBLISHER', '只有发布者可以验收', 403);
     if (task.status !== 'submitted') throwErr('EX_BAD_STATE', '当前状态不可验收', 409);
 
-    const reward = task.reward_exp;
+    const reward = task.reward_coin;
     const assigneeId = task.assignee_id;
     const dayStart = dayStartIso();
 
-    // 每日接取获得经验上限
+    // 每日接取获得金币上限
     const receivedToday = db
-      .prepare("SELECT COALESCE(SUM(amount), 0) AS s FROM exp_transactions WHERE to_user_id = ? AND type = 'transfer' AND created_at >= ?")
+      .prepare("SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions WHERE to_user_id = ? AND type = 'transfer' AND created_at >= ?")
       .get(assigneeId, dayStart).s;
-    if (receivedToday + reward > config.reward.dailyAccept) {
-      throwErr('EX_DAILY_ACCEPT', '接取者今日获得经验已达上限', 400);
+    if (receivedToday + reward > config.coin.dailyAccept) {
+      throwErr('EX_DAILY_ACCEPT', '接取者今日获得金币已达上限', 400);
     }
 
-    // 每日同一对用户经验往来次数上限（命中打标，只记录不封禁）
+    // 每日同一对用户金币往来次数上限（命中打标，只记录不封禁）
     const pairCount = db
       .prepare(
-        `SELECT COUNT(*) AS c FROM exp_transactions WHERE type = 'transfer' AND ((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)) AND created_at >= ?`
+        `SELECT COUNT(*) AS c FROM coin_transactions WHERE type = 'transfer' AND ((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)) AND created_at >= ?`
       )
       .get(user.id, assigneeId, assigneeId, user.id, dayStart).c;
-    if (pairCount >= config.reward.dailyPairTransfer) {
+    if (pairCount >= config.coin.dailyPairTransfer) {
       auditLog(ctx, { userId: user.id, event: 'high_freq_mutual', detail: `with=${assigneeId};task=${taskId}` });
-      throwErr('EX_DAILY_PAIR', '今日与该用户的经验往来已达上限', 400);
+      throwErr('EX_DAILY_PAIR', '今日与该用户的金币往来已达上限', 400);
     }
 
-    // 划转：发布者 frozen → 接取者 available + total（幂等键 task:{id}:approve）
+    // 划转：发布者 frozen_coin → 接取者 coin（幂等键 task:{id}:approve）
     if (reward > 0) {
-      const exp = applyExpRaw({ fromUserId: user.id, toUserId: assigneeId, amount: reward, type: 'transfer', idempotencyKey: `task:${taskId}:approve`, taskId });
-      if (exp.error) throwErr(exp.code, exp.error, exp.status);
+      const coin = applyCoinRaw({ fromUserId: user.id, toUserId: assigneeId, amount: reward, type: 'transfer', relatedType: 'task', relatedId: taskId, idempotencyKey: `task:${taskId}:approve` });
+      if (coin.error) throwErr(coin.code, coin.error, coin.status);
     }
+    // 接取者完成行为：发经验（等级成长，带每日上限，幂等键 task:{id}:exp）
+    grantBehaviorExp(assigneeId, config.exp.taskComplete, { relatedId: taskId, idempotencyKey: `task:${taskId}:exp` });
 
     db.prepare("UPDATE tasks SET status = 'approved', finished_at = ? WHERE id = ?").run(nowIso(), taskId);
     const sys = insertTaskSystemMessage(taskId, user.id, `${user.nickname} 验收通过，奖励已发放`);
@@ -362,7 +398,11 @@ export function approveTask(user, taskId, ctx = {}) {
     return { task: mapTask(getTask(taskId)), sys };
   });
   if (result.error) return result;
-  return result.value;
+  const unlocked = [];
+  const assigneeId = result.value.task.assigneeId;
+  const approvedCount = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE assignee_id = ? AND status = 'approved'").get(assigneeId).c;
+  if (approvedCount === 1) collectAchievement(unlocked, assigneeId, 'EXP_005');
+  return { ...result.value, unlocked };
 }
 
 // 驳回（达到上限 → terminated + 退经验；否则回 accepted 可重交）
@@ -377,10 +417,10 @@ export function rejectTask(user, taskId, ctx = {}) {
     const maxReject = config.task.maxRejectCount;
     let sys;
     if (nextCount >= maxReject) {
-      // 终止 + 退经验（幂等键 task:{id}:refund）
-      if (task.reward_exp > 0) {
-        const exp = applyExpRaw({ fromUserId: user.id, amount: task.reward_exp, type: 'refund', idempotencyKey: `task:${taskId}:refund`, taskId });
-        if (exp.error) throwErr(exp.code, exp.error, exp.status);
+      // 终止 + 退赏金（幂等键 task:{id}:refund）
+      if (task.reward_coin > 0) {
+        const coin = applyCoinRaw({ fromUserId: user.id, amount: task.reward_coin, type: 'refund', relatedType: 'task', relatedId: taskId, idempotencyKey: `task:${taskId}:refund` });
+        if (coin.error) throwErr(coin.code, coin.error, coin.status);
       }
       db.prepare("UPDATE tasks SET status = 'terminated', reject_count = ?, finished_at = ? WHERE id = ?").run(nextCount, nowIso(), taskId);
       sys = insertTaskSystemMessage(taskId, user.id, `任务被驳回 ${nextCount} 次，已终止，奖励已退回`);
@@ -392,7 +432,10 @@ export function rejectTask(user, taskId, ctx = {}) {
     return { task: mapTask(getTask(taskId)), sys };
   });
   if (result.error) return result;
-  return result.value;
+  const unlocked = [];
+  const rejected = result.value.task;
+  if (rejected.status === 'terminated' && rejected.assigneeId) collectAchievement(unlocked, rejected.assigneeId, 'EXP_009');
+  return { ...result.value, unlocked };
 }
 
 // 发布者取消（非终态 → cancelled + 退经验）
@@ -404,9 +447,9 @@ export function cancelTask(user, taskId) {
     if (task.publisher_id !== user.id) throwErr('EX_NOT_PUBLISHER', '只有发布者可以取消', 403);
     if (TERMINAL.includes(task.status)) throwErr('EX_BAD_STATE', '终态任务不可取消', 409);
 
-    if (task.reward_exp > 0) {
-      const exp = applyExpRaw({ fromUserId: user.id, amount: task.reward_exp, type: 'refund', idempotencyKey: `task:${taskId}:refund`, taskId });
-      if (exp.error) throwErr(exp.code, exp.error, exp.status);
+    if (task.reward_coin > 0) {
+      const coin = applyCoinRaw({ fromUserId: user.id, amount: task.reward_coin, type: 'refund', relatedType: 'task', relatedId: taskId, idempotencyKey: `task:${taskId}:refund` });
+      if (coin.error) throwErr(coin.code, coin.error, coin.status);
     }
     db.prepare("UPDATE tasks SET status = 'cancelled', finished_at = ? WHERE id = ?").run(nowIso(), taskId);
     const sys = insertTaskSystemMessage(taskId, user.id, `${user.nickname} 取消了任务，奖励已退回`);
@@ -444,6 +487,8 @@ export function toggleTaskDone(user, taskId) {
       db.prepare("UPDATE tasks SET status = 'todo', finished_at = NULL WHERE id = ?").run(taskId);
     } else {
       db.prepare("UPDATE tasks SET status = 'done', finished_at = ? WHERE id = ?").run(nowIso(), taskId);
+      // 完成私密备忘：发行为经验（幂等键 task:{id}:exp，重复打卡不重复发放）
+      grantBehaviorExp(user.id, config.exp.todoComplete, { relatedId: taskId, idempotencyKey: `task:${taskId}:exp` });
     }
     return { task: mapTask(getTask(taskId)) };
   });
@@ -462,18 +507,19 @@ export function expireOverdueTasks(io) {
   for (const task of overdue) {
     const result = runTx(() => {
       if (config.task.expireAction === 'autoApprove' && task.status === 'submitted') {
-        if (task.reward_exp > 0) {
-          const exp = applyExpRaw({ fromUserId: task.publisher_id, toUserId: task.assignee_id, amount: task.reward_exp, type: 'transfer', idempotencyKey: `task:${task.id}:approve`, taskId: task.id });
-          if (exp.error) throwErr(exp.code, exp.error, exp.status);
+        if (task.reward_coin > 0) {
+          const coin = applyCoinRaw({ fromUserId: task.publisher_id, toUserId: task.assignee_id, amount: task.reward_coin, type: 'transfer', relatedType: 'task', relatedId: task.id, idempotencyKey: `task:${task.id}:approve` });
+          if (coin.error) throwErr(coin.code, coin.error, coin.status);
         }
+        grantBehaviorExp(task.assignee_id, config.exp.taskComplete, { relatedId: task.id, idempotencyKey: `task:${task.id}:exp` });
         db.prepare("UPDATE tasks SET status = 'approved', finished_at = ? WHERE id = ?").run(now, task.id);
         const sys = insertTaskSystemMessage(task.id, task.publisher_id, '任务超时，已自动验收通过');
         return { status: 'approved', sys };
       }
 
-      if (task.reward_exp > 0) {
-        const exp = applyExpRaw({ fromUserId: task.publisher_id, amount: task.reward_exp, type: 'refund', idempotencyKey: `task:${task.id}:refund`, taskId: task.id });
-        if (exp.error) throwErr(exp.code, exp.error, exp.status);
+      if (task.reward_coin > 0) {
+        const coin = applyCoinRaw({ fromUserId: task.publisher_id, amount: task.reward_coin, type: 'refund', relatedType: 'task', relatedId: task.id, idempotencyKey: `task:${task.id}:refund` });
+        if (coin.error) throwErr(coin.code, coin.error, coin.status);
       }
       db.prepare("UPDATE tasks SET status = 'expired', finished_at = ? WHERE id = ?").run(now, task.id);
       const sys = insertTaskSystemMessage(task.id, task.publisher_id, '任务已过期，奖励已退回发布者');
@@ -500,6 +546,7 @@ export function expireOverdueTasks(io) {
 
 router.post('/tasks', requireRole('student', 'admin'), (req, res) => {
   const result = publishTask(req.user, req.body || {});
+  notifyUnlocked(req, result.unlocked);
   if (result.error) return res.status(result.status).json({ error: result.error, code: result.code });
   emitTaskChanged(req, result.task.id, result.sys);
   res.status(201).json(result.task);
@@ -534,6 +581,7 @@ router.post('/tasks/:id/submit', requireRole('student', 'admin'), (req, res) => 
 
 router.post('/tasks/:id/approve', requireRole('student', 'admin'), (req, res) => {
   const result = approveTask(req.user, Number(req.params.id), { ip: req.ip, userAgent: req.headers['user-agent'] });
+  notifyUnlocked(req, result.unlocked);
   if (result.error) return res.status(result.status).json({ error: result.error, code: result.code });
   emitTaskChanged(req, result.task.id, result.sys);
   res.json(result.task);
@@ -541,6 +589,7 @@ router.post('/tasks/:id/approve', requireRole('student', 'admin'), (req, res) =>
 
 router.post('/tasks/:id/reject', requireRole('student', 'admin'), (req, res) => {
   const result = rejectTask(req.user, Number(req.params.id), { ip: req.ip, userAgent: req.headers['user-agent'] });
+  notifyUnlocked(req, result.unlocked);
   if (result.error) return res.status(result.status).json({ error: result.error, code: result.code });
   emitTaskChanged(req, result.task.id, result.sys);
   res.json(result.task);

@@ -1,6 +1,6 @@
 # 🎓 Campus Online · 河南大学校园游戏化社交原型
 
-Campus Online 是一个**轻量级前后端分离**的校园地图游戏化社交原型，面向河南大学。包含**明伦、金明两个校区**的卡通手绘示意地图，每个地点用 emoji 符号标注，点击进入该区域的对话框（分「活动区」发帖 +「聊天区」多人实时聊天）；同时提供任务/待办、经验值与等级、排行榜、成就、个人页等游戏化功能。
+Campus Online 是一个**轻量级前后端分离**的校园地图游戏化社交原型，面向河南大学。包含**明伦、金明两个校区**的卡通手绘示意地图，每个地点用 emoji 符号标注，点击进入该区域的对话框（分「活动区」发帖 +「聊天区」多人实时聊天）；同时提供任务/备忘、每日签到、二手市场与奖池抽奖、经验值与等级、金币、排行榜、成就、个人页等游戏化功能。
 
 > 原型定位：纯本地运行，所有数据存储在本地 SQLite。不做实名、不做支付、不复制真实地图、不使用官方校徽等受版权保护素材。
 
@@ -52,10 +52,15 @@ Campus Online 是一个**轻量级前后端分离**的校园地图游戏化社�
 - 仅「报名中」可报名；终态（已结束 / 已取消）全员只读。
 
 **✅ 任务 / 🏆 排行榜 / 成就 / 👤 个人页**
-- 任务：完成待办赚经验，`level = 经验 / 100 + 1`。
+- 任务：完成私密备忘 / 公开任务赚经验（等级）；公开任务赏金用金币托管。
 - 排行榜：按经验值全校排名。
 - 成就：发帖、聊天、跑图、升级解锁徽章。
-- 个人页：改昵称 / 学院，查看等级与经验。
+- 个人页：改昵称 / 学院，查看等级、经验与金币余额。
+
+**📅 签到 / 🏪 市场 / 🎰 奖池**
+- 签到：每日签到领金币，连续签到奖励递增。
+- 市场：二手集市，上架闲置物品、金币成交，交易手续费流入奖池。
+- 奖池：用金币抽奖，奖金从奖池（手续费累积）支出。
 
 **📱 手机端**
 - 横竖屏自动适配，横屏为「手游 HUD」风格。
@@ -93,6 +98,9 @@ campus-online/
 │   ├── db.js               # SQLite 连接、建表、迁移
 │   ├── seed.js             # 种子数据
 │   ├── presence.js         # 在线成员内存集合
+│   ├── exp.js              # 经验发放（只发不扣）
+│   ├── coin.js             # 金币流转（唯一写入入口）
+│   ├── treasury.js         # 公共奖池
 │   ├── data/               # campus.db 与上传文件（已 gitignore）
 │   └── routes/
 │       ├── areas.js        # 区域
@@ -100,7 +108,11 @@ campus-online/
 │       ├── messages.js     # 频道消息 + 活动消息（回复/提及/回应/已读/撤回）
 │       ├── posts.js        # 活动帖 + 详情/加入/状态机/备注
 │       ├── stickers.js     # 自定义表情包上传/列表/删除
-│       ├── todos.js        # 待办
+│       ├── tasks.js        # 任务（公开/私密 + 讨论区）
+│       ├── coin.js         # 金币钱包 / 配置 / 流水
+│       ├── signin.js       # 每日签到
+│       ├── market.js       # 二手市场（挂单/购买）
+│       ├── lottery.js      # 奖池抽奖
 │       ├── users.js        # 用户 / 排行榜
 │       ├── campuses.js     # 校区
 │       ├── achievements.js # 成就
@@ -127,14 +139,16 @@ campus-online/
         │   ├── WorldChat.jsx        # 世界频道
         │   ├── HudPanels.jsx        # HUD 悬浮面板集合
         │   ├── HudOverlay.jsx       # 覆盖式页面面板
-        │   ├── NicknameModal.jsx    # 首登弹窗
-        │   └── TodoCard.jsx         # 待办卡片
+        │   └── NicknameModal.jsx    # 首登弹窗
         └── pages/
             ├── MapPage.jsx           # 地图页（legacy，未启用）
             ├── TasksPage.jsx         # 任务页
             ├── LeaderboardPage.jsx   # 排行榜
             ├── AchievementsPage.jsx  # 成就页
             ├── ProfilePage.jsx       # 个人页
+            ├── SignInPage.jsx        # 每日签到
+            ├── MarketPage.jsx        # 二手市场
+            ├── LotteryPage.jsx       # 奖池抽奖
             └── ActivityDetailPage.jsx# 活动详情页（信息区 + 频道）
 ```
 
@@ -194,9 +208,17 @@ npm run client   # 仅前端（http://localhost:5173）
 | POST | `/api/stickers` | 上传表情包（raw 二进制，≤2MB，png/jpg/gif/webp） |
 | DELETE | `/api/stickers/:id` | 删除表情包 |
 | GET | `/api/achievements?userId=...` | 成就列表（含当前进度与解锁状态） |
-| GET | `/api/todos?userId=...` | 某用户待办列表 |
-| POST | `/api/todos` | 创建待办（`{ userId, title, description, dueDate, areaId, expReward }`） |
-| PATCH | `/api/todos/:id/complete` | 完成任务（`{ userId }`，幂等，加 `exp_reward` 经验） |
+| GET | `/api/coin/wallet` | 我的账户（exp/level/coin/frozenCoin） |
+| GET | `/api/coin/config` | 金币经济配置（上限等） |
+| GET | `/api/signin` | 签到状态（连击/今日奖励） |
+| POST | `/api/signin` | 签到领金币（幂等） |
+| GET | `/api/market` | 在售挂单列表 |
+| GET | `/api/market/mine` | 我的挂单 + 买入/卖出记录 |
+| POST | `/api/market` | 发布挂单（`{ title, description, priceCoin }`） |
+| DELETE | `/api/market/:id` | 下架我的挂单 |
+| POST | `/api/market/:id/buy` | 购买（手续费进奖池） |
+| GET | `/api/lottery` | 奖池余额 + 抽奖配置 |
+| POST | `/api/lottery/draw` | 抽奖（奖金从奖池支出） |
 | GET | `/api/users/:id` | 单个用户信息 |
 | PATCH | `/api/users/:id` | 修改昵称/学院（`{ nickname?, college? }`） |
 | GET | `/api/leaderboard` | 按经验值降序排行榜 |
@@ -214,7 +236,7 @@ npm run client   # 仅前端（http://localhost:5173）
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `users` | id, nickname, college, avatar, exp, created_at | 用户与经验值 |
+| `users` | id, nickname, college, avatar, exp, coin, frozen_coin, role, created_at | 用户 / 经验等级 / 金币 |
 | `campuses` | id, name, slug | 校区（明伦 / 金明） |
 | `areas` | id, campus_id, name, slug, description, x, y, color, emoji, hidden | 地图地点（hidden 用于隐藏世界频道区域） |
 | `channels` | id, area_id, name | 每个地点一个频道 |
@@ -226,13 +248,19 @@ npm run client   # 仅前端（http://localhost:5173）
 | `message_reactions` | message_id, emoji, user_id, created_at | 消息表情回应（同一用户同一 emoji 只计一次） |
 | `message_reads` | message_id, user_id, read_at | 消息已读 |
 | `stickers` | id, user_id, url, created_at | 自定义表情包（按用户隔离，每人 ≤50） |
-| `todos` | id, user_id, title, description, due_date, status, exp_reward, area_id, created_at, completed_at | 待办任务 |
+| `tasks` | id, publisher_id, assignee_id, type, title, description, tags, reward_coin, status, ... | 任务（公开赏金 / 私密备忘） |
+| `exp_transactions` | id, to_user_id, amount, type, source, idempotency_key, created_at | 经验发放流水（只发不扣） |
+| `coin_transactions` | id, from_user_id, to_user_id, amount, type, related_type, related_id, note, idempotency_key, created_at | 金币流水（mint/freeze/transfer/refund/sink） |
+| `sign_ins` | user_id, date, streak, reward_coin, created_at | 每日签到记录（user_id + date 主键） |
+| `market_listings` | id, seller_id, type, title, description, price_coin, status, ... | 市场挂单（二手） |
+| `market_orders` | id, listing_id, buyer_id, seller_id, price_coin, fee_coin, status, ... | 市场订单（记录手续费） |
+| `treasury` | id(=1), balance_coin | 公共奖池（手续费流入） |
 | `achievements` | id, code, name, description, icon, metric, threshold | 成就定义（进度由现有数据动态计算） |
 
 - 活动状态：`draft(草稿)` / `open(报名中)` / `ongoing(进行中)` / `ended(已结束)` / `cancelled(已取消)`；终态不可再变。
 - 角色：`admin`（发起人，不可转让）/ `participant`（已加入）/ `guest`（访客）；服务端每个写接口独立鉴权。
-- 待办状态：`pending` / `completed`。
-- 等级规则：`level = floor(exp / 100) + 1`；完成任务默认加 `exp_reward`（默认 10）经验值，幂等保护。
+- 任务状态见 `TASKS.md`：私密 `todo`/`done`，公开 `published → accepted → submitted → approved` 等。
+- 等级规则：`level = floor(exp / 100) + 1`；完成私密备忘 / 公开任务加行为经验（默认 10，幂等保护）；公开任务赏金为金币。
 
 ## 已知限制
 

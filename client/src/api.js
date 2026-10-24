@@ -143,10 +143,6 @@ export const api = {
     }
     return data;
   },
-  todos: (userId) => request(`/api/todos?userId=${encodeURIComponent(userId)}`),
-  createTodo: (body) => request('/api/todos', { method: 'POST', body: JSON.stringify(body) }),
-  completeTodo: (id, body) =>
-    request(`/api/todos/${id}/complete`, { method: 'PATCH', body: JSON.stringify(body) }),
   // 任务系统
   tasks: (filter, status) =>
     request(`/api/tasks?filter=${encodeURIComponent(filter)}` + (status ? `&status=${encodeURIComponent(status)}` : '')),
@@ -169,15 +165,43 @@ export const api = {
   taskMessageReads: (id, mid) => request(`/api/tasks/${id}/messages/${mid}/reads`),
   markTaskRead: (id, body) =>
     request(`/api/tasks/${id}/read`, { method: 'POST', body: JSON.stringify(body) }),
-  // 经验钱包 / 配置
-  wallet: () => request('/api/exp/wallet'),
-  expConfig: () => request('/api/exp/config'),
+  // 钱包 / 金币配置
+  wallet: () => request('/api/coin/wallet'),
+  coinConfig: () => request('/api/coin/config'),
+  signinStatus: () => request('/api/signin'),
+  signinClaim: () => request('/api/signin', { method: 'POST' }),
+  marketSession: () => request('/api/market/session'),
+  marketShops: () => request('/api/market/shops'),
+  marketStalls: (sessionId) => request(`/api/market/stalls?sessionId=${encodeURIComponent(sessionId || '')}`),
+  marketItems: (sessionId) => request(`/api/market/items?sessionId=${encodeURIComponent(sessionId || '')}`),
+  marketMyOrders: () => request('/api/market/orders/mine'),
+  marketCreateItem: (body) => request('/api/market/items', { method: 'POST', body: JSON.stringify(body) }),
+  marketListItem: (id, body) => request(`/api/market/items/${id}/list`, { method: 'POST', body: JSON.stringify(body) }),
+  marketRemoveItem: (id) => request(`/api/market/items/${id}/remove`, { method: 'POST' }),
+  marketBuy: (id) => request(`/api/market/items/${id}/buy`, { method: 'POST' }),
+  marketSignupStall: (sessionId) => request('/api/market/stalls/signup', { method: 'POST', body: JSON.stringify({ sessionId }) }),
+  marketGrabStall: (sessionId) => request('/api/market/stalls/grab', { method: 'POST', body: JSON.stringify({ sessionId }) }),
+  marketConfirmStall: (id) => request(`/api/market/stalls/${id}/confirm`, { method: 'POST' }),
+  marketReleaseStall: (id) => request(`/api/market/stalls/${id}/release`, { method: 'POST' }),
+  marketBargain: (itemId, offerCoin) => request(`/api/market/items/${itemId}/bargains`, { method: 'POST', body: JSON.stringify({ offerCoin }) }),
+  marketAcceptBargain: (id) => request(`/api/market/bargains/${id}/accept`, { method: 'POST' }),
+  marketPayOrder: (id) => request(`/api/market/orders/${id}/pay`, { method: 'POST' }),
+  marketDeliverOrder: (id) => request(`/api/market/orders/${id}/deliver`, { method: 'POST' }),
+  marketConfirmOrder: (id) => request(`/api/market/orders/${id}/confirm`, { method: 'POST' }),
+  marketOpenBlindbox: (id) => request(`/api/market/orders/${id}/open`, { method: 'POST' }),
+  lotteryInfo: () => request('/api/lottery'),
+  lotteryDraw: () => request('/api/lottery/draw', { method: 'POST' }),
+  adminSearchUsers: (q) => request(`/api/admin/users/search?q=${encodeURIComponent(q)}`),
+  adminGrantCoin: (id, body) => request(`/api/admin/user/${id}/coin`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminSetPermissions: (id, body) => request(`/api/admin/user/${id}/permissions`, { method: 'PATCH', body: JSON.stringify(body) }),
   user: (id) => request(`/api/users/${id}`),
   leaderboard: () => request('/api/leaderboard'),
   createUser: (body) => request('/api/users', { method: 'POST', body: JSON.stringify(body) }),
   updateUser: (id, body) =>
     request(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   achievements: (userId) => request(`/api/achievements?userId=${encodeURIComponent(userId)}`),
+  userAchievements: () => request('/api/user/achievements'),
+  triggerAchievement: (code) => request('/api/user/achievements/trigger', { method: 'POST', body: JSON.stringify({ code }) }),
   world: () => request('/api/world'),
 };
 

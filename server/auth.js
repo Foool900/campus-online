@@ -80,3 +80,33 @@ export function requireRole(...roles) {
     next();
   };
 }
+
+// 权限项（RBAC）
+export const PERMISSIONS = ['COIN_ADD', 'COIN_MINUS', 'USER_MANAGE', 'ADMIN_GRANT'];
+
+export function getUserPermissions(user) {
+  try {
+    const p = JSON.parse(user?.permissions || '[]');
+    return Array.isArray(p) ? p : [];
+  } catch {
+    return [];
+  }
+}
+
+// 超级管理员：admin 且持有 ADMIN_GRANT 权限
+export function isSuperAdmin(user) {
+  return user?.role === 'admin' && getUserPermissions(user).includes('ADMIN_GRANT');
+}
+
+// 权限鉴权中间件：requirePermission('EXP_ADD')。超级管理员直接放行。
+export function requirePermission(...perms) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: '未登录' });
+    if (isSuperAdmin(req.user)) return next();
+    const has = getUserPermissions(req.user);
+    if (!perms.every((p) => has.includes(p))) {
+      return res.status(403).json({ error: '无权限' });
+    }
+    next();
+  };
+}

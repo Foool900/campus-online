@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { api } from '../api.js';
 
 // ===== 世界与视差参数 =====
 const W = 2400;
@@ -158,6 +159,10 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
   const pinch = useRef(null);
   const size = useRef({ w: 1, h: 1 });
   const frame = useRef(0);
+  const achRef = useRef({ zoom: false, drag: false, lastNode: null, nodeCount: 0, distance: 0 });
+  const fireAch = (code) => {
+    api.triggerAchievement(code).catch(() => {});
+  };
 
   const baseScale = () => Math.max(size.current.w / W, size.current.h / H);
 
@@ -371,6 +376,10 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
       t.x = Ax - applied * (Ax - t.x);
       t.y = Ay - applied * (Ay - t.y);
       t.zoom = ns;
+      if (ns >= MAX_ZOOM - 0.01 && !achRef.current.zoom) {
+        achRef.current.zoom = true;
+        fireAch('EXP_002');
+      }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -394,6 +403,11 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
     const dt = Math.max(1, now - d.lastT);
     const dx = e.clientX - d.lastX;
     const dy = e.clientY - d.lastY;
+    achRef.current.distance += Math.abs(dx) + Math.abs(dy);
+    if (achRef.current.distance > 50000 && !achRef.current.drag) {
+      achRef.current.drag = true;
+      fireAch('EXP_004');
+    }
     target.current.x = d.ox + (e.clientX - d.sx) / S;
     target.current.y = d.oy + (e.clientY - d.sy) / S;
     vel.current.x = ((dx / S) / dt) * 16;
@@ -458,6 +472,11 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
       const dt = Math.max(1, now - d.lastT);
       const dx = t[0].clientX - d.lastX;
       const dy = t[0].clientY - d.lastY;
+      achRef.current.distance += Math.abs(dx) + Math.abs(dy);
+      if (achRef.current.distance > 50000 && !achRef.current.drag) {
+        achRef.current.drag = true;
+        fireAch('EXP_004');
+      }
       target.current.x = d.ox + (t[0].clientX - d.sx) / S;
       target.current.y = d.oy + (t[0].clientY - d.sy) / S;
       vel.current.x = ((dx / S) / dt) * 16;
@@ -507,7 +526,15 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
           else nodeRefs.current.delete(area.id);
         }}
         className={'node' + (selectedAreaId === area.id ? ' selected' : '')}
-        onClick={() => onSelectArea(area)}
+        onClick={() => {
+          onSelectArea(area);
+          if (achRef.current.lastNode === area.id) achRef.current.nodeCount++;
+          else {
+            achRef.current.lastNode = area.id;
+            achRef.current.nodeCount = 1;
+          }
+          if (achRef.current.nodeCount >= 5) fireAch('EXP_003');
+        }}
         onPointerDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
         onMouseEnter={() => setHoveredId(area.id)}
