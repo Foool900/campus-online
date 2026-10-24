@@ -449,7 +449,12 @@ export function buyItem(buyerId, itemId) {
 
   const feeRate = cfg('tradeFeeRate') ?? config.coin.tradeFeeRate;
   const fee = Math.floor(item.price_coin * feeRate);
-  const key = `order:${itemId}:${buyerId}:buy`;
+  // 单件：一次性锁定，固定幂等键可安全重试；多件：每笔独立（同一买家可买多件）。
+  // 多库存的代价：牺牲重试幂等性，网络重试会当成新订单（可能重复购买+重复扣款）。
+  // 如需幂等重试，调用方应传稳定的 client_request_id。
+  const key = item.stock === 1
+    ? `order:${itemId}:${buyerId}:buy`
+    : `order:${itemId}:${buyerId}:buy:${randomBytes(8).toString('hex')}`;
 
   const r = runTx(() => {
     // 锁定商品（单件）/ 扣库存（多件）
@@ -460,6 +465,11 @@ export function buyItem(buyerId, itemId) {
       stockRes = db.prepare("UPDATE market_items SET sold_count = sold_count + 1 WHERE id=? AND status='active' AND sold_count < stock").run(itemId);
     }
     if (stockRes.changes === 0) throwBiz('OUT_OF_STOCK', '商品已售罄', 409);
+
+    // 多库存售罄：立即标记 sold，避免「已卖光仍显示在售」
+    if (item.stock > 1) {
+      db.prepare("UPDATE market_items SET status='sold', sold_at=? WHERE id=? AND stock>1 AND sold_count>=stock").run(nowIso(), itemId);
+    }
 
     // 冻结付款
     const coin = applyCoinRaw({ fromUserId: buyerId, amount: item.price_coin, type: 'freeze', relatedType: 'market_order', relatedId: itemId, idempotencyKey: key });
@@ -972,6 +982,13 @@ export function resolveDispute(adminId, disputeId, outcome) {
           // 从卖家冻结保证金 transfer 给买家（frozen → coin）
           const coin = applyCoinRaw({ fromUserId: order.seller_id, toUserId: order.buyer_id, amount: bc.min_value_coin, type: 'transfer', relatedType: 'market_dispute', relatedId: disputeId, idempotencyKey: `dispute:${disputeId}:compensate` });
           if (!coin.error) writeLedger({ sessionId: itemSessionId, bizType: 'dispute_compensate', bizId: disputeId, op: 'compensate', userId: order.buyer_id, counterpartyId: order.seller_id, amount: bc.min_value_coin, coinTxId: coin.txId, idempotencyKey: `dispute:${disputeId}:compensate:ledger` });
+          // 剩余保证金（deposit - 保底）没收进奖池，避免永久冻结在卖家账上
+          const forfeit = bc.deposit_coin - bc.min_value_coin;
+          if (forfeit > 0) {
+            const sysId = systemAccountId();
+            const f = applyCoinRaw({ fromUserId: order.seller_id, toUserId: sysId, amount: forfeit, type: 'transfer', relatedType: 'market_dispute', relatedId: disputeId, idempotencyKey: `dispute:${disputeId}:forfeit` });
+            if (!f.error) writeLedger({ sessionId: itemSessionId, bizType: 'dispute_forfeit', bizId: disputeId, op: 'treasury_in', userId: order.seller_id, counterpartyId: sysId, amount: forfeit, coinTxId: f.txId, idempotencyKey: `dispute:${disputeId}:forfeit:ledger` });
+          }
         }
       }
     }
@@ -1062,7 +1079,6 @@ export function recomputeReputation(sellerId) {
   const by = {};
   for (const r of orders) by[r.status] = r.c;
   const completed = by.completed ?? 0;
-  const cancelled = by.cancelled ?? 0;
   const refunded = by.refunded ?? 0;
   const orderCount = completed; // 权威成交数（cancelled/refunded 不计入量级）
 
@@ -1073,9 +1089,13 @@ export function recomputeReputation(sellerId) {
 
   // rates（REAL，不提前取整，只在最终 score 时 Math.round）
   const goodRate = (goodCount + 5) / (ratedCount + 10); // Laplace：0 评价 = 0.5（中性）
-  const totalTerminated = completed + cancelled + refunded;
-  const completionRate = totalTerminated > 0 ? completed / totalTerminated : 1; // 语义：还没违约过
-  const cancelRate = totalTerminated > 0 ? cancelled / totalTerminated : 0;      // v1 无卖家取消，恒 0
+  // v1 的 cancelled 均来自买家放弃支付（cancelOrder）或系统超时（expireBargainPayments），
+  // 不是卖家违约，不计入卖家 cancelRate（否则买家爽约会扣卖家信誉）。
+  // 未来若引入卖家主动取消，再单独区分并恢复该扣分项。
+  const cancelRate = 0;
+  // completionRate = completed / (completed + refunded)
+  // cancelled 不计入（v1 的 cancelled 均为买家爽约/系统超时，非卖家未完成）。
+  const completionRate = (completed + refunded) > 0 ? completed / (completed + refunded) : 1;
   const disputeLostRate = completed > 0 ? disputeLost / completed : 0;
 
   const protectedOrders = Math.max(0, 5 - orderCount); // 公式算，不用字段递减
@@ -1208,6 +1228,21 @@ export function expireStalls(now) {
         if (!coin.error) writeLedger({ sessionId: s.session_id, bizType: 'stall_refund', bizId: s.id, op: 'refund', userId: s.owner_id, amount: s.deposit_coin, coinTxId: coin.txId, idempotencyKey: `${rk}:ledger` });
       }
       return true;
+    });
+    if (r.value) released++;
+  }
+  return { released };
+}
+
+// 1b) 预留摊位确认超时释放：status='reserved' 且 reserved_expires_at 过期 → 退回 available
+// （抢摊/抽签后 15min 未确认，摊位不能永久卡在 reserved，占坑者也可重新抢）
+export function expireReservedStalls(now) {
+  const rows = db.prepare("SELECT id FROM market_stalls WHERE status='reserved' AND reserved_expires_at IS NOT NULL AND reserved_expires_at < ?").all(now);
+  let released = 0;
+  for (const s of rows) {
+    const r = runTx(() => {
+      const up = db.prepare("UPDATE market_stalls SET status='available', owner_id=NULL, reserved_expires_at=NULL, idempotency_key=NULL WHERE id=? AND status='reserved' AND reserved_expires_at < ?").run(s.id, now);
+      return up.changes > 0;
     });
     if (r.value) released++;
   }
