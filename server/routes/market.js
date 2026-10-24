@@ -669,6 +669,8 @@ export function openBlindbox(buyerId, orderId) {
     db.prepare("UPDATE market_blindbox_configs SET status='held', hold_until=? WHERE item_id=?").run(holdUntil, order.item_id);
     // 开盒即视为收货完成（盲盒开盒即成交，保证金托管 24h）
     db.prepare("UPDATE market_orders SET status='completed', completed_at=? WHERE id=? AND status='paid_escrow'").run(nowIso(), orderId);
+    // 盲盒开盒即成交，同样记 completion 事件（与 confirmOrder 对齐）
+    db.prepare("INSERT OR IGNORE INTO market_reputation_events (user_id, order_id, event, created_at) VALUES (?, ?, 'completion', ?)").run(order.seller_id, orderId, nowIso());
     // 盲盒开盒即划账（charge）：托管 → 卖家 + 手续费
     const fee = order.fee_coin;
     const net = order.price_coin - fee;
@@ -854,9 +856,10 @@ export function resolveDispute(adminId, disputeId, outcome) {
   const r = runTx(() => {
     db.prepare('UPDATE market_disputes SET status=?, resolved_by=?, resolved_at=? WHERE id=?').run(outcome, adminId, nowIso(), disputeId);
     if (outcome === 'resolved_buyer' && dispute.order_id) {
-      // 扣卖家保证金赔付买家（简版：走 order refund）
+      // 买家胜诉 = 卖家败诉，记 dispute_lost 事件（幂等键 order_id + event + seller_id）
       const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(dispute.order_id);
       if (order) {
+        db.prepare("INSERT OR IGNORE INTO market_reputation_events (user_id, order_id, event, created_at) VALUES (?, ?, 'dispute_lost', ?)").run(order.seller_id, dispute.order_id, nowIso());
         const bc = db.prepare('SELECT * FROM market_blindbox_configs WHERE item_id=?').get(order.item_id);
         if (bc) {
           const itemSessionId = db.prepare('SELECT session_id FROM market_items WHERE id=?').get(order.item_id)?.session_id;
