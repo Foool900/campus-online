@@ -252,7 +252,7 @@ export function releaseStall(userId, stallId) {
  * 上架商品（draft）。盲盒的 contentJson 描述盒内内容：接受 `{ text }` 对象或 JSON 字符串，
  * 缺省/空串 → 惊喜盲盒；入库前统一序列化为 JSON 字符串。
  */
-export function createItem(userId, { sessionId, title, description, priceCoin, type = 'normal', stock = 1, contentJson = null, valueCoin = null }) {
+export function createItem(userId, { sessionId, title, description, priceCoin, type = 'normal', stock = 1, contentJson = null }) {
   const sys = assertNotSystem(userId);
   if (sys) return sys;
   const session = getSession(sessionId);
