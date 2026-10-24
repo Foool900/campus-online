@@ -5,7 +5,7 @@ process.env.DB_PATH = ':memory:';
 
 const { db, initDb, nowIso } = await import('../db.js');
 const { config } = await import('../config.js');
-const { treasuryBalance } = await import('../treasury.js');
+const { systemAccountId } = await import('../treasury.js');
 const {
   createSession, createItem, listItem, buyItem, confirmOrder,
   createBargain, acceptBargain, payOrder, grabStall, confirmStall,
@@ -46,7 +46,7 @@ function listedItem(seller, sid, stallId, opts = {}) {
   return r.itemId;
 }
 
-test('正常购买：冻结付款 → 确认划账 + 手续费进奖池', () => {
+test('正常购买：冻结付款 → 确认划账 + 手续费进 SYSTEM', () => {
   const sid = openSession();
   const seller = makeUser(1000);
   const buyer = makeUser(1000);
@@ -54,7 +54,7 @@ test('正常购买：冻结付款 → 确认划账 + 手续费进奖池', () => 
   const itemId = listedItem(seller, sid, stallId, { price: 100 });
 
   const fee = Math.floor(100 * config.coin.tradeFeeRate);
-  const beforeTreasury = treasuryBalance();
+  const sysBefore = db.prepare('SELECT coin FROM users WHERE id=?').get(systemAccountId()).coin;
 
   const b = buyItem(buyer, itemId);
   assert.equal(b.error, undefined);
@@ -64,7 +64,7 @@ test('正常购买：冻结付款 → 确认划账 + 手续费进奖池', () => 
   assert.equal(c.error, undefined);
   assert.equal(acct(buyer).frozenCoin, 0);
   assert.equal(acct(seller).coin, 1000 - 5 + (100 - fee)); // 扣 5 押金冻结 + 收净额
-  assert.equal(treasuryBalance(), beforeTreasury + fee);
+  assert.equal(db.prepare('SELECT coin FROM users WHERE id=?').get(systemAccountId()).coin, sysBefore + fee);
 });
 
 test('砍价：出价冻结 → 接受生成订单 → 支付不重复冻结 → 确认', () => {
