@@ -143,8 +143,8 @@ export default function MarketPage() {
     setBusyBuyId(item.id);
     try {
       const r = await api.marketBuy(item.id);
-      await reload(); // 等列表刷新完成再放行，避免刷新期间还能再点
-      setMsg(`已购买，订单 #${r.orderId}（已冻结 ${r.price} 金币）`);
+      setMsg(`已购买，订单 #${r.orderId}（已冻结 ${r.price} 金币）`); // 先设成功：购买成功即成功
+      await reload().catch(() => {}); // 刷新失败静默，但仍等刷新完成再放行（防双击）
     } catch (e) { setErr(e.message); }
     finally { setBusyBuyId(null); }
   };
