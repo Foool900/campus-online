@@ -293,6 +293,16 @@ function mapItem(row) {
   };
 }
 
+function mapBargain(row) {
+  if (!row) return row;
+  return {
+    id: row.id, itemId: row.item_id, itemTitle: row.item_title, itemPrice: row.item_price,
+    buyerId: row.buyer_id, buyerName: row.buyer_name, buyerAvatar: row.buyer_avatar,
+    offerCoin: row.offer_coin, attemptNo: row.attempt_no, status: row.status,
+    createdAt: row.created_at, expiresAt: row.expires_at,
+  };
+}
+
 // 上架（draft → active，绑定摊位）
 export function listItem(userId, itemId, { stallId = null, shopId = null }) {
   const sys = assertNotSystem(userId);
@@ -647,6 +657,20 @@ export function rejectBargain(sellerId, bargainId) {
   });
   if (r.error) return r;
   return { ok: true };
+}
+
+// 卖家待处理砍价列表（砍价收件箱数据源，纯只读）
+export function listSellerBargains(userId) {
+  return db.prepare(`
+    SELECT b.id, b.item_id, i.title AS item_title, i.price_coin AS item_price,
+           b.buyer_id, u.nickname AS buyer_name, u.avatar AS buyer_avatar,
+           b.offer_coin, b.attempt_no, b.status, b.created_at, b.expires_at
+    FROM market_bargains b
+    JOIN market_items i ON i.id = b.item_id
+    JOIN users u ON u.id = b.buyer_id
+    WHERE b.seller_id = ? AND b.status = 'pending'
+    ORDER BY b.created_at DESC
+  `).all(userId).map(mapBargain);
 }
 
 // ============================================================
@@ -1138,6 +1162,10 @@ router.get('/market/orders/mine', (req, res) => {
   const bought = db.prepare('SELECT o.*, i.title, i.type AS item_type FROM market_orders o JOIN market_items i ON i.id=o.item_id WHERE o.buyer_id=? ORDER BY o.id DESC').all(req.user.id);
   const sold = db.prepare('SELECT o.*, i.title, i.type AS item_type FROM market_orders o JOIN market_items i ON i.id=o.item_id WHERE o.seller_id=? ORDER BY o.id DESC').all(req.user.id);
   res.json({ bought, sold });
+});
+
+router.get('/market/bargains/mine', requireRole('student', 'admin'), (req, res) => {
+  res.json(listSellerBargains(req.user.id));
 });
 
 router.get('/market/shops', (req, res) => {
