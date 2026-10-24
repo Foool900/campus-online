@@ -195,6 +195,8 @@ export const api = {
   marketDeliverOrder: (id) => request(`/api/market/orders/${id}/deliver`, { method: 'POST' }),
   marketConfirmOrder: (id) => request(`/api/market/orders/${id}/confirm`, { method: 'POST' }),
   marketOpenBlindbox: (id) => request(`/api/market/orders/${id}/open`, { method: 'POST' }),
+  marketDisputes: () => request('/api/market/disputes/mine'),
+  marketDispute: (body) => request('/api/market/disputes', { method: 'POST', body: JSON.stringify(body) }),
   lotteryInfo: () => request('/api/lottery'),
   lotteryDraw: () => request('/api/lottery/draw', { method: 'POST' }),
   adminSearchUsers: (q) => request(`/api/admin/users/search?q=${encodeURIComponent(q)}`),

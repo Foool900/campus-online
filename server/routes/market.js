@@ -948,6 +948,46 @@ export function resolveDispute(adminId, disputeId, outcome) {
   return { ok: true };
 }
 
+// 我的举报（举报方视角）：本月计数 + 可举报盲盒订单 + 历史记录
+// used 读 report_counters（与 POST 限流同源，避免 dispute 被删导致口径漂移）
+export function listMyDisputes(userId) {
+  const limit = cfg('reportMonthlyLimit');
+  const monthKey = (() => {
+    const d = new Date();
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  })();
+  const used = db.prepare('SELECT count FROM report_counters WHERE user_id=? AND month_key=?').get(userId, monthKey)?.count ?? 0;
+
+  // 可举报盲盒订单：开盒后 blindboxHoldHours 内、且我未举报过
+  const holdMs = cfg('blindboxHoldHours') * 3600000;
+  const nowMs = Date.now();
+  const reportable = db.prepare(`
+    SELECT o.id AS order_id, o.item_id, i.title, bo.opened_at, bo.opened_value_coin
+    FROM market_orders o
+    JOIN market_items i ON i.id = o.item_id
+    JOIN market_blindbox_opens bo ON bo.order_id = o.id
+    WHERE o.buyer_id = ? AND o.type = 'blindbox'
+      AND NOT EXISTS (SELECT 1 FROM market_disputes d WHERE d.order_id = o.id AND d.reporter_id = o.buyer_id)
+    ORDER BY bo.opened_at DESC
+  `).all(userId)
+    .map((r) => ({
+      orderId: r.order_id,
+      itemId: r.item_id,
+      title: r.title,
+      valueCoin: r.opened_value_coin,
+      deadlineAt: new Date(new Date(r.opened_at).getTime() + holdMs).toISOString(),
+    }))
+    .filter((r) => new Date(r.deadlineAt).getTime() > nowMs);
+
+  const disputes = db.prepare('SELECT * FROM market_disputes WHERE reporter_id=? ORDER BY id DESC').all(userId)
+    .map((d) => ({
+      id: d.id, orderId: d.order_id, itemId: d.item_id, type: d.type,
+      reason: d.reason, evidenceJson: d.evidence_json, status: d.status, createdAt: d.created_at,
+    }));
+
+  return { limit, used, remaining: Math.max(0, limit - used), reportable, disputes };
+}
+
 // 买家评价卖家（1-5 星），completed 后 rateWindowDays 天内可评，幂等 (order_id,'rating',seller_id)
 export function rateOrder(buyerId, orderId, rating) {
   const order = db.prepare('SELECT * FROM market_orders WHERE id=?').get(orderId);
@@ -1355,6 +1395,10 @@ router.post('/market/orders/:id/rate', requireRole('student', 'admin'), (req, re
   const r = rateOrder(req.user.id, Number(req.params.id), req.body.rating);
   if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
   res.json(r);
+});
+
+router.get('/market/disputes/mine', requireRole('student', 'admin'), (req, res) => {
+  res.json(listMyDisputes(req.user.id));
 });
 
 router.post('/market/disputes', requireRole('student', 'admin'), (req, res) => {

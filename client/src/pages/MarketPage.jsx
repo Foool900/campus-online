@@ -4,6 +4,7 @@ import { useUser } from '../UserContext.jsx';
 import MarketBargainInbox from '../components/MarketBargainInbox.jsx';
 import MarketShopAuction from '../components/MarketShopAuction.jsx';
 import MarketBroadcastBar from '../components/MarketBroadcastBar.jsx';
+import MarketDisputeReport from '../components/MarketDisputeReport.jsx';
 
 const TYPE_LABELS = { normal: '普通', blindbox: '盲盒', flash_sale: '秒杀' };
 const STALL_STATUS = { available: '空', reserved: '预留', occupied: '营业', released: '已撤', expired: '到期' };
@@ -264,6 +265,9 @@ export default function MarketPage() {
           </div>
         </div>
       ))}
+
+      {/* 纠纷举报（举报方：开盒 24h 内可举报盲盒） */}
+      <MarketDisputeReport />
 
       {msg && <div className="form-success">{msg}</div>}
       {err && <div className="form-error">{err}</div>}
