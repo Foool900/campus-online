@@ -1,0 +1,162 @@
+/* ============================================================
+   Campus Online · 背包 / 橱窗（沿用夜市深空暗黑主题）
+   在 market.css 之后加载，复用 --mk-* 变量；所有样式锁在 .bag-page 作用域。
+   ============================================================ */
+
+.bag-page {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  color: var(--text);
+  display: flex;
+  gap: 20px;
+  overflow: hidden;
+}
+
+/* 左侧导航（文字 + 图标） */
+.bag-sidebar {
+  flex-shrink: 0; align-self: flex-start;
+  margin: 32px 0 32px 24px;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 10px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--mk-line);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.6);
+}
+.bag-nav {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 14px;
+  color: rgba(255, 255, 255, 0.55); background: transparent; border: none;
+  font-size: 13px; letter-spacing: 1px; cursor: pointer;
+  transition: color .2s ease, background .2s ease, box-shadow .2s ease;
+  white-space: nowrap;
+}
+.bag-nav:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.bag-nav.active {
+  color: #fff; background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 18px rgba(143, 211, 255, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+.bag-nav-ico { font-size: 16px; }
+
+/* 主区 */
+.bag-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 32px 40px; height: 100%; overflow: hidden; }
+.bag-content { flex: 1; min-height: 0; overflow-y: auto; padding-right: 8px; }
+.bag-loading { margin: auto; color: rgba(255, 255, 255, 0.4); letter-spacing: 2px; }
+
+/* 顶部栏 */
+.bag-hero { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.bag-hero-title { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+.bag-hero-meta { font-size: 13px; color: var(--mk-label); }
+.bag-open { color: #34d399; }
+.bag-closed { color: #f87171; }
+
+/* 物品网格 + 卡片 */
+.bag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.bag-card {
+  display: flex; gap: 14px; padding: 16px;
+  background: #141416; border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--mk-radius-sm);
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+}
+.bag-card:hover { border-color: rgba(255, 255, 255, 0.16); background: #18181b; transform: translateY(-2px); }
+.bag-card.listed { border-color: rgba(245, 198, 76, 0.35); }
+.bag-card-icon { font-size: 40px; line-height: 1; align-self: flex-start; }
+.bag-card-body { flex: 1; min-width: 0; }
+.bag-card-name { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.bag-card-desc { font-size: 12px; color: rgba(255, 255, 255, 0.45); line-height: 1.5; margin: 8px 0; }
+.bag-card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.bag-tag {
+  font-size: 10px; padding: 2px 8px; border-radius: 999px;
+  color: rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.06);
+}
+.bag-tag.showcase { color: #8fd3ff; background: rgba(143, 211, 255, 0.12); }
+.bag-tag.listed { color: #f5c64c; background: rgba(245, 198, 76, 0.12); }
+.bag-card-actions { display: flex; flex-direction: column; gap: 8px; align-self: flex-start; }
+
+/* 稀有度徽章 */
+.bag-rarity {
+  display: inline-block; font-size: 10px; letter-spacing: 1px;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor;
+}
+
+/* 空状态 */
+.bag-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 220px; padding: 32px;
+  border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 20px;
+  background: rgba(255, 255, 255, 0.02); color: rgba(255, 255, 255, 0.5);
+}
+.bag-empty-ico { font-size: 40px; margin-bottom: 10px; }
+.bag-empty-sub { margin-top: 6px; font-size: 11px; color: rgba(255, 255, 255, 0.3); }
+
+/* 我的橱窗 */
+.bag-showcase-head { font-size: 13px; color: var(--mk-label); margin-bottom: 14px; }
+.bag-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+.bag-slot {
+  min-height: 180px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  background: #141416; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--mk-radius-sm);
+  text-align: center;
+}
+.bag-slot.picking { border-color: var(--mk-accent); box-shadow: 0 0 18px rgba(143, 211, 255, 0.25); }
+.bag-slot.locked { opacity: 0.45; }
+.bag-slot-icon { font-size: 40px; }
+.bag-slot-name { font-size: 14px; font-weight: 600; }
+.bag-slot-btn { margin-top: auto; }
+.bag-slot-empty {
+  width: 100%; flex: 1; min-height: 120px; border-radius: 12px;
+  background: transparent; border: 1px dashed rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.4); cursor: pointer; font-size: 14px;
+}
+.bag-slot-empty:hover { color: #8fd3ff; border-color: rgba(143, 211, 255, 0.4); }
+.bag-slot-lock { display: flex; flex-direction: column; justify-content: center; flex: 1; font-size: 13px; color: rgba(255, 255, 255, 0.4); }
+
+.bag-picker { margin-top: 18px; padding: 16px; background: #141416; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: var(--mk-radius-sm); }
+.bag-picker-title { font-size: 13px; margin-bottom: 12px; color: var(--mk-num); }
+.bag-picker-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text); cursor: pointer; text-align: left; font-size: 13px;
+}
+.bag-picker-item:hover { background: rgba(143, 211, 255, 0.1); border-color: rgba(143, 211, 255, 0.3); }
+
+/* 橱窗广场 */
+.bag-plaza-group {
+  padding: 16px; margin-bottom: 14px;
+  background: #141416; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--mk-radius-sm);
+  cursor: pointer; transition: border-color .15s ease, background .15s ease;
+}
+.bag-plaza-group:hover { border-color: rgba(143, 211, 255, 0.35); background: #18181b; }
+.bag-user-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.bag-user-avatar { font-size: 24px; }
+.bag-user-name { font-size: 14px; font-weight: 600; color: var(--mk-num); }
+.bag-user-level { font-size: 11px; color: var(--mk-label); }
+.bag-plaza-items { display: flex; flex-wrap: wrap; gap: 10px; }
+.bag-plaza-item {
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.bag-plaza-item-icon { font-size: 20px; }
+.bag-plaza-item-name { font-size: 12px; color: rgba(255, 255, 255, 0.7); }
+
+/* 出售弹层 */
+.bag-modal-backdrop {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px);
+}
+.bag-modal {
+  width: 360px; padding: 22px;
+  background: #16161a; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.bag-modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.bag-modal-hint { font-size: 12px; color: rgba(255, 255, 255, 0.45); margin-bottom: 14px; line-height: 1.5; }
+.bag-input {
+  width: 100%; padding: 10px 12px; border-radius: 12px; margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff;
+}
+.bag-modal-actions { display: flex; gap: 10px; justify-content: flex-end; }

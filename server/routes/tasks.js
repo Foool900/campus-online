@@ -4,6 +4,8 @@ import { requireRole } from '../auth.js';
 import { config, levelOf, taskRewardCap, dailyPublishCap } from '../config.js';
 import { applyExpRaw } from '../exp.js';
 import { applyCoinRaw } from '../coin.js';
+import { obtainStoryRaw } from '../story.js';
+import { grantInventoryItem } from '../inventory.js';
 import { triggerAchievement, notifyNewProgressAchievements } from '../achievements.js';
 import {
   worldChannelId,
@@ -51,10 +53,12 @@ function parseJson(s, fallback = null) {
 const SELECT_TASK = `
   SELECT t.*,
          pu.nickname AS publisher_name, pu.avatar AS publisher_avatar,
-         au.nickname AS assignee_name, au.avatar AS assignee_avatar
+         au.nickname AS assignee_name, au.avatar AS assignee_avatar,
+         w.name AS reward_wardrobe_name, w.icon AS reward_wardrobe_icon
   FROM tasks t
   JOIN users pu ON pu.id = t.publisher_id
   LEFT JOIN users au ON au.id = t.assignee_id
+  LEFT JOIN wardrobe_items w ON w.id = t.reward_wardrobe_item_id
 `;
 
 function mapTask(row) {
@@ -68,6 +72,10 @@ function mapTask(row) {
     description: row.description,
     tags: parseJson(row.tags, []),
     rewardCoin: row.reward_coin,
+    storyId: row.story_id,
+    rewardWardrobeId: row.reward_wardrobe_item_id,
+    rewardWardrobeName: row.reward_wardrobe_name,
+    rewardWardrobeIcon: row.reward_wardrobe_icon,
     status: row.status,
     minCompleteAt: row.min_complete_at,
     deadlineAt: row.deadline_at,
@@ -215,6 +223,24 @@ export function publishTask(user, payload) {
     return { error: '奖励金币无效', code: 'EX_REWARD_INVALID', status: 400 };
   }
 
+  // 关联剧情：完成该公开任务后向接取者自动发放（仅 admin 可设）
+  const storyId = payload?.storyId != null && payload.storyId !== '' ? Number(payload.storyId) : null;
+  if (storyId != null) {
+    if (user.role !== 'admin') return { error: '仅管理员可为任务关联剧情', code: 'EX_STORY_ADMIN_ONLY', status: 403 };
+    if (!Number.isInteger(storyId) || !db.prepare('SELECT id FROM stories WHERE id = ?').get(storyId)) {
+      return { error: '关联的剧情不存在', code: 'EX_STORY_NOT_FOUND', status: 400 };
+    }
+  }
+
+  // 任务装扮奖励：完成该公开任务后向接取者发放一件装扮（仅 admin 可设，按 code 解析）
+  let rewardWardrobeId = null;
+  if (payload?.rewardWardrobeCode != null && payload.rewardWardrobeCode !== '') {
+    if (user.role !== 'admin') return { error: '仅管理员可为任务设置装扮奖励', code: 'EX_WARDROBE_ADMIN_ONLY', status: 403 };
+    const w = db.prepare('SELECT id FROM wardrobe_items WHERE code = ?').get(String(payload.rewardWardrobeCode));
+    if (!w) return { error: '奖励装扮不存在', code: 'EX_WARDROBE_NOT_FOUND', status: 400 };
+    rewardWardrobeId = w.id;
+  }
+
   const me = db.prepare('SELECT exp, coin FROM users WHERE id = ?').get(uid);
   const cap = taskRewardCap(me.coin);
   if (reward > cap) {
@@ -245,10 +271,10 @@ export function publishTask(user, payload) {
   const result = runTx(() => {
     const info = db
       .prepare(
-        `INSERT INTO tasks (publisher_id, type, title, description, tags, reward_coin, status, min_complete_at, deadline_at, created_at)
-         VALUES (?, 'public', ?, ?, ?, ?, 'published', ?, ?, ?)`
+        `INSERT INTO tasks (publisher_id, type, title, description, tags, reward_coin, story_id, reward_wardrobe_item_id, status, min_complete_at, deadline_at, created_at)
+         VALUES (?, 'public', ?, ?, ?, ?, ?, ?, 'published', ?, ?, ?)`
       )
-      .run(uid, t, desc, tagsJson, reward, minCompleteAt, deadline, nowIso());
+      .run(uid, t, desc, tagsJson, reward, storyId, rewardWardrobeId, minCompleteAt, deadline, nowIso());
     const taskId = Number(info.lastInsertRowid);
 
     // 发布即冻结赏金（幂等键 task:{id}:freeze）
@@ -392,6 +418,17 @@ export function approveTask(user, taskId, ctx = {}) {
     // 接取者完成行为：发经验（等级成长，带每日上限，幂等键 task:{id}:exp）
     grantBehaviorExp(assigneeId, config.exp.taskComplete, { relatedId: taskId, idempotencyKey: `task:${taskId}:exp` });
 
+    // 任务关联剧情：接取者完成即自动获得该剧情（幂等，忽略失败）
+    if (task.story_id) {
+      obtainStoryRaw(assigneeId, task.story_id, 'task');
+    }
+
+    // 任务装扮奖励：接取者完成即获得装扮（幂等键 task:{id}:wardrobe）
+    if (task.reward_wardrobe_item_id) {
+      const g = grantInventoryItem(assigneeId, { wardrobeItemId: task.reward_wardrobe_item_id, source: 'task', sourceRefId: taskId });
+      if (g.error) throwErr(g.code || 'EX_WARDROBE_GRANT', g.error, g.status || 500);
+    }
+
     db.prepare("UPDATE tasks SET status = 'approved', finished_at = ? WHERE id = ?").run(nowIso(), taskId);
     const sys = insertTaskSystemMessage(taskId, user.id, `${user.nickname} 验收通过，奖励已发放`);
     auditLog(ctx, { userId: user.id, event: 'task_approved', detail: `task=${taskId};assignee=${assigneeId};reward=${reward}` });
@@ -512,6 +549,10 @@ export function expireOverdueTasks(io) {
           if (coin.error) throwErr(coin.code, coin.error, coin.status);
         }
         grantBehaviorExp(task.assignee_id, config.exp.taskComplete, { relatedId: task.id, idempotencyKey: `task:${task.id}:exp` });
+        if (task.reward_wardrobe_item_id) {
+          const g = grantInventoryItem(task.assignee_id, { wardrobeItemId: task.reward_wardrobe_item_id, source: 'task', sourceRefId: task.id });
+          if (g.error) throwErr(g.code || 'EX_WARDROBE_GRANT', g.error, g.status || 500);
+        }
         db.prepare("UPDATE tasks SET status = 'approved', finished_at = ? WHERE id = ?").run(now, task.id);
         const sys = insertTaskSystemMessage(task.id, task.publisher_id, '任务超时，已自动验收通过');
         return { status: 'approved', sys };

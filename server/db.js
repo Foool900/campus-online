@@ -298,6 +298,7 @@ export function initDb() {
       accepted_at     TEXT,
       submitted_at    TEXT,
       finished_at     TEXT,
+      story_id        INTEGER,                       -- 关联剧情：完成该公开任务后向接取者发放（仅 admin 可设）
       FOREIGN KEY (publisher_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (assignee_id)   REFERENCES users(id) ON DELETE SET NULL
     );
@@ -673,6 +674,232 @@ export function initDb() {
       created_at TEXT    NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    -- 背包物品实例（长期持有，卖出后保留历史）
+    -- source：market 市场成交 | gacha 卡池 | story 剧情 | seed 新手礼包/演示
+    -- status：held 持有 | listed 寄售中 | sold 已卖出（保留历史）
+    -- showcase_slot：NULL 表示不在橱窗；0..N 表示占据的展览位（随等级解锁）
+    CREATE TABLE IF NOT EXISTS inventory_items (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner_id          INTEGER NOT NULL,
+      name              TEXT    NOT NULL,
+      icon              TEXT    NOT NULL DEFAULT '📦',
+      description       TEXT    NOT NULL DEFAULT '',
+      rarity            TEXT    NOT NULL DEFAULT 'common', -- common|uncommon|rare|epic|legendary
+      source            TEXT    NOT NULL DEFAULT 'seed',
+      source_ref_id     INTEGER,
+      status            TEXT    NOT NULL DEFAULT 'held',
+      showcase_slot     INTEGER,
+      list_price_coin   INTEGER,
+      listed_session_id INTEGER,
+      listed_at         TEXT,
+      sold_at           TEXT,
+      sold_price_coin   INTEGER,
+      acquired_at       TEXT    NOT NULL,
+      kind              TEXT    NOT NULL DEFAULT 'collectible', -- collectible 收藏品 | apparel 装扮
+      slot              TEXT,                                   -- apparel 的部位：hair|hat|outfit|shoes|accessory
+      wardrobe_item_id  INTEGER,                                -- 软引用图鉴模板 wardrobe_items.id（收藏品为 NULL）
+      pixel_json        TEXT,                                   -- 已解析配色的像素网格（apparel 非空）
+      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_inv_owner ON inventory_items(owner_id, status);
+    CREATE INDEX IF NOT EXISTS idx_inv_listed ON inventory_items(status, listed_session_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_showcase ON inventory_items(owner_id, showcase_slot) WHERE showcase_slot IS NOT NULL;
+
+    -- ===== 虚拟角色（像素装扮）=====
+    -- 装扮图鉴模板（四来源共享的定义源：市场/卡池/剧情/任务）
+    -- pixel_json = 模板网格（rows 用命名槽位字符 P/S/A/O/H），default_colorway 把槽位字符映射到具体色值
+    CREATE TABLE IF NOT EXISTS wardrobe_items (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      code             TEXT    NOT NULL UNIQUE,   -- 稳定标识，如 'outfit_school'
+      name             TEXT    NOT NULL,
+      slot             TEXT    NOT NULL,          -- hair|hat|outfit|shoes|accessory
+      rarity           TEXT    NOT NULL DEFAULT 'common',
+      icon             TEXT    NOT NULL DEFAULT '📦',
+      pixel_json       TEXT    NOT NULL,          -- { w, h, rows: [...] }，rows 用槽位字符
+      default_colorway TEXT    NOT NULL,          -- { "P":"#hex", "S":"#hex", ... }
+      description      TEXT    NOT NULL DEFAULT '',
+      created_at       TEXT    NOT NULL
+    );
+
+    -- 角色外观（一人一行：底模 + 各部位已装备物品 id）
+    CREATE TABLE IF NOT EXISTS user_characters (
+      user_id       INTEGER PRIMARY KEY,
+      skin_tone     TEXT    NOT NULL DEFAULT 'fair',     -- 肤色档位
+      body          TEXT    NOT NULL DEFAULT 'standard', -- 体型档位
+      face          TEXT    NOT NULL DEFAULT 'neutral',  -- 表情档位
+      equipped_json TEXT    NOT NULL DEFAULT '{}',       -- { "hat": inventory_item_id, ... }
+      updated_at    TEXT    NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- 装扮奖池（卡池「装扮祈愿」；结构对齐 story_pools，抽取装扮模板 → 落背包）
+    CREATE TABLE IF NOT EXISTS wardrobe_pools (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      code           TEXT    NOT NULL UNIQUE,   -- 策划稳定标识，导入幂等
+      name           TEXT    NOT NULL,
+      icon           TEXT    NOT NULL DEFAULT '🧥',
+      draw_cost_coin INTEGER NOT NULL DEFAULT 50,
+      start_at       TEXT,
+      end_at         TEXT,
+      status         TEXT    NOT NULL DEFAULT 'active', -- active | closed
+      created_at     TEXT    NOT NULL
+    );
+
+    -- 装扮奖池条目（按权重抽取装扮模板）
+    CREATE TABLE IF NOT EXISTS wardrobe_pool_entries (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      pool_id          INTEGER NOT NULL,
+      wardrobe_item_id INTEGER NOT NULL,
+      weight           INTEGER NOT NULL DEFAULT 1,
+      FOREIGN KEY (pool_id)          REFERENCES wardrobe_pools(id)  ON DELETE CASCADE,
+      FOREIGN KEY (wardrobe_item_id) REFERENCES wardrobe_items(id) ON DELETE CASCADE,
+      UNIQUE (pool_id, wardrobe_item_id)
+    );
+
+    -- 装扮抽奖记录（审计 / 防刷）
+    CREATE TABLE IF NOT EXISTS wardrobe_gacha_draws (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id           INTEGER NOT NULL,
+      pool_id           INTEGER NOT NULL,
+      wardrobe_item_id  INTEGER NOT NULL,
+      inventory_item_id INTEGER,                    -- 落库的物品实例
+      cost_coin         INTEGER NOT NULL DEFAULT 0,
+      created_at        TEXT    NOT NULL,
+      FOREIGN KEY (user_id)          REFERENCES users(id)          ON DELETE CASCADE,
+      FOREIGN KEY (pool_id)          REFERENCES wardrobe_pools(id) ON DELETE CASCADE,
+      FOREIGN KEY (wardrobe_item_id) REFERENCES wardrobe_items(id) ON DELETE CASCADE
+    );
+
+    -- ===== 剧情 =====
+    -- 剧情章节模板（策划导入的内容，与玩家进度彻底分离）
+    -- obtain_mode：claim 直接领取 | task 完成任务解锁 | gacha 奖池抽取（后续）
+    -- availability：permanent 常驻 | festival 节日限定（受窗口约束）
+    CREATE TABLE IF NOT EXISTS stories (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      code            TEXT    NOT NULL UNIQUE,     -- 策划稳定标识，导入幂等
+      title           TEXT    NOT NULL,
+      subtitle        TEXT    NOT NULL DEFAULT '',
+      cover           TEXT    NOT NULL DEFAULT '📖',
+      category        TEXT    NOT NULL DEFAULT '日常',
+      obtain_mode     TEXT    NOT NULL DEFAULT 'claim',
+      availability    TEXT    NOT NULL DEFAULT 'permanent',
+      window_start_at TEXT,
+      window_end_at   TEXT,
+      festival_code   TEXT,
+      unlock_task_id  INTEGER,
+      gacha_pool_id   INTEGER,
+      sequential      INTEGER NOT NULL DEFAULT 1,  -- 节点是否必须顺序打卡
+      timeboxed       INTEGER NOT NULL DEFAULT 0,  -- 节日限时：窗口结束未完成则 expired
+      rewards_json    TEXT    NOT NULL DEFAULT '{"exp":0,"coin":0,"items":[]}',
+      sort_order      INTEGER NOT NULL DEFAULT 0,
+      status          TEXT    NOT NULL DEFAULT 'published', -- draft | published | archived
+      created_by      INTEGER,
+      created_at      TEXT    NOT NULL,
+      updated_at      TEXT    NOT NULL
+    );
+
+    -- 剧情打卡节点（线下完成、线上打卡）
+    CREATE TABLE IF NOT EXISTS story_nodes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      story_id     INTEGER NOT NULL,
+      seq          INTEGER NOT NULL,               -- 1..N
+      title        TEXT    NOT NULL,
+      description  TEXT    NOT NULL DEFAULT '',
+      checkin_type TEXT    NOT NULL DEFAULT 'none', -- none | text | photo | link
+      tips         TEXT    NOT NULL DEFAULT '',
+      choices_json TEXT,                            -- 可选：["图书馆","操场"]（伪分支，只记录不走向）
+      created_at   TEXT    NOT NULL,
+      FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE,
+      UNIQUE (story_id, seq)
+    );
+
+    -- 玩家已获剧情（进度实例；一人一章一份）
+    CREATE TABLE IF NOT EXISTS player_stories (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL,
+      story_id     INTEGER NOT NULL,
+      status       TEXT    NOT NULL DEFAULT 'in_progress', -- in_progress | completed | expired
+      obtained_via TEXT    NOT NULL DEFAULT 'claim',        -- claim | task | gacha
+      obtained_at  TEXT    NOT NULL,
+      completed_at TEXT,
+      FOREIGN KEY (user_id)  REFERENCES users(id)   ON DELETE CASCADE,
+      FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE,
+      UNIQUE (user_id, story_id)
+    );
+
+    -- 玩家节点打卡（幂等：一人一节点一次）
+    CREATE TABLE IF NOT EXISTS player_story_checkins (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL,
+      story_id   INTEGER NOT NULL,
+      node_id    INTEGER NOT NULL,
+      proof_json TEXT,                              -- { text, imageUrl, link }
+      choice     TEXT,                              -- 伪分支选择
+      checked_at TEXT    NOT NULL,
+      FOREIGN KEY (user_id)  REFERENCES users(id)       ON DELETE CASCADE,
+      FOREIGN KEY (story_id) REFERENCES stories(id)     ON DELETE CASCADE,
+      FOREIGN KEY (node_id)  REFERENCES story_nodes(id) ON DELETE CASCADE,
+      UNIQUE (user_id, node_id)
+    );
+
+    -- 玩家剧情元信息（1 周年锚点 + 计数）
+    CREATE TABLE IF NOT EXISTS player_story_meta (
+      user_id         INTEGER PRIMARY KEY,
+      first_story_at  TEXT,
+      completed_count INTEGER NOT NULL DEFAULT 0,
+      checkin_count   INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- 剧情奖池（奖池限定章节的抽取）
+    CREATE TABLE IF NOT EXISTS story_pools (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      code           TEXT    NOT NULL UNIQUE,   -- 策划稳定标识，导入幂等
+      name           TEXT    NOT NULL,
+      icon           TEXT    NOT NULL DEFAULT '🎁',
+      draw_cost_coin INTEGER NOT NULL DEFAULT 50,
+      start_at       TEXT,
+      end_at         TEXT,
+      status         TEXT    NOT NULL DEFAULT 'active', -- active | closed
+      created_at     TEXT    NOT NULL
+    );
+
+    -- 奖池条目（按权重抽取剧情）
+    CREATE TABLE IF NOT EXISTS story_pool_entries (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      pool_id  INTEGER NOT NULL,
+      story_id INTEGER NOT NULL,
+      weight   INTEGER NOT NULL DEFAULT 1,
+      FOREIGN KEY (pool_id)  REFERENCES story_pools(id) ON DELETE CASCADE,
+      FOREIGN KEY (story_id) REFERENCES stories(id)    ON DELETE CASCADE,
+      UNIQUE (pool_id, story_id)
+    );
+
+    -- 剧情抽奖记录（审计 / 防刷）
+    CREATE TABLE IF NOT EXISTS story_gacha_draws (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL,
+      pool_id    INTEGER NOT NULL,
+      story_id   INTEGER NOT NULL,
+      cost_coin  INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT    NOT NULL,
+      FOREIGN KEY (user_id)  REFERENCES users(id)        ON DELETE CASCADE,
+      FOREIGN KEY (pool_id)  REFERENCES story_pools(id)  ON DELETE CASCADE,
+      FOREIGN KEY (story_id) REFERENCES stories(id)      ON DELETE CASCADE
+    );
+
+    -- 时间线故事书（1 周年定稿快照）
+    CREATE TABLE IF NOT EXISTS story_timelines (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         INTEGER NOT NULL,
+      period_start_at TEXT    NOT NULL,
+      period_end_at   TEXT    NOT NULL,
+      content_json    TEXT    NOT NULL,
+      generated_at    TEXT    NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE (user_id, period_start_at)
+    );
   `);
 
   // 迁移：老库补 hidden 列（世界频道使用隐藏区域承载）
@@ -772,6 +999,22 @@ export function initDb() {
     db.exec('UPDATE tasks SET reward_coin = reward_exp;');
   }
   if (taskCols.includes('reward_exp')) db.exec('ALTER TABLE tasks DROP COLUMN reward_exp;');
+  if (!taskCols.includes('story_id')) db.exec('ALTER TABLE tasks ADD COLUMN story_id INTEGER;');
+  if (!taskCols.includes('reward_wardrobe_item_id')) db.exec('ALTER TABLE tasks ADD COLUMN reward_wardrobe_item_id INTEGER;');
+
+  // 迁移：market_items 补 icon / rarity / inventory_item_id（背包物品寄售回链）
+  const mItemCols = db.prepare('PRAGMA table_info(market_items)').all().map((c) => c.name);
+  if (!mItemCols.includes('icon')) db.exec("ALTER TABLE market_items ADD COLUMN icon TEXT NOT NULL DEFAULT '📦';");
+  if (!mItemCols.includes('rarity')) db.exec("ALTER TABLE market_items ADD COLUMN rarity TEXT NOT NULL DEFAULT 'common';");
+  if (!mItemCols.includes('inventory_item_id')) db.exec('ALTER TABLE market_items ADD COLUMN inventory_item_id INTEGER;');
+  if (!mItemCols.includes('wardrobe_item_id')) db.exec('ALTER TABLE market_items ADD COLUMN wardrobe_item_id INTEGER;');
+
+  // 迁移：inventory_items 补虚拟角色列（kind/slot/wardrobe_item_id/pixel_json）
+  const invCols = db.prepare('PRAGMA table_info(inventory_items)').all().map((c) => c.name);
+  if (!invCols.includes('kind')) db.exec("ALTER TABLE inventory_items ADD COLUMN kind TEXT NOT NULL DEFAULT 'collectible';");
+  if (!invCols.includes('slot')) db.exec('ALTER TABLE inventory_items ADD COLUMN slot TEXT;');
+  if (!invCols.includes('wardrobe_item_id')) db.exec('ALTER TABLE inventory_items ADD COLUMN wardrobe_item_id INTEGER;');
+  if (!invCols.includes('pixel_json')) db.exec('ALTER TABLE inventory_items ADD COLUMN pixel_json TEXT;');
 
   // 迁移：删除旧的经验分类资产树 + 旧待办（已被金币账户 / tasks 私密任务取代）
   db.exec('DROP TABLE IF EXISTS exp_admin_logs;');

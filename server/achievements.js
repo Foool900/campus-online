@@ -9,6 +9,9 @@ export const ACHIEVEMENT_METRICS = [
   'exp_total',
   'areas_visited',
   'page_opens',
+  'inventory_items',
+  'stories_completed',
+  'story_checkins',
 ];
 
 // 触发式成就引擎：幂等解锁（同用户同成就只插入一次），返回本次是否新解锁
@@ -66,6 +69,12 @@ export function metricValue(userId, metric) {
            WHERE m.user_id = ? AND a.hidden = 0`
         )
         .get(userId).c;
+    case 'inventory_items':
+      return db.prepare("SELECT COUNT(*) AS c FROM inventory_items WHERE owner_id = ? AND status != 'sold'").get(userId).c;
+    case 'stories_completed':
+      return db.prepare("SELECT COUNT(*) AS c FROM player_stories WHERE user_id = ? AND status = 'completed'").get(userId).c;
+    case 'story_checkins':
+      return db.prepare('SELECT COUNT(*) AS c FROM player_story_checkins WHERE user_id = ?').get(userId).c;
     default:
       return 0;
   }

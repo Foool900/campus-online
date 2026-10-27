@@ -1,4 +1,5 @@
 import { db, nowIso } from './db.js';
+import { grantStarterPack } from './inventory.js';
 
 const CAMPUSES = [
   { name: '明伦校区', slug: 'minglun' },
@@ -166,6 +167,10 @@ const ACHIEVEMENTS = [
   { code: 'exp-100', name: '初露锋芒', description: '累计经验达到 100', icon: '⭐', metric: 'exp_total', threshold: 100 },
   { code: 'exp-500', name: '满级大佬', description: '累计经验达到 500', icon: '🏆', metric: 'exp_total', threshold: 500 },
   { code: 'explorer', name: '地图全开', description: '在两校区所有区域频道都发过言', icon: '🗺️', metric: 'areas_visited', threshold: 0 },
+  { code: 'collector-5', name: '收藏家', description: '背包累计持有 5 件物品', icon: '🎒', metric: 'inventory_items', threshold: 5 },
+  { code: 'story-first', name: '人生如戏', description: '完成第一个剧情', icon: '📖', metric: 'stories_completed', threshold: 1 },
+  { code: 'story-5', name: '剧情收藏家', description: '累计完成 5 个剧情', icon: '📚', metric: 'stories_completed', threshold: 5 },
+  { code: 'story-checkin-10', name: '打卡达人', description: '累计剧情打卡 10 次', icon: '📍', metric: 'story_checkins', threshold: 10 },
 ];
 
 export function seedIfEmpty() {
@@ -181,6 +186,8 @@ export function seedIfEmpty() {
   const insertUser = db.prepare('INSERT INTO users (nickname, college, avatar, exp, created_at) VALUES (?, ?, ?, ?, ?)');
   const insertMessage = db.prepare('INSERT INTO messages (channel_id, user_id, conversation_type, conversation_id, content, created_at) VALUES (?, ?, ?, ?, ?, ?)');
   const insertPost = db.prepare('INSERT INTO posts (channel_id, user_id, title, content, category, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+
+  let demoUserId = null;
 
   db.transaction(() => {
     const campusIdBySlug = {};
@@ -213,7 +220,7 @@ export function seedIfEmpty() {
 
     // 演示用户
     const demoInfo = insertUser.run('小荷', '计算机与信息工程学院', '🐸', 30, nowIso());
-    const demoUserId = Number(demoInfo.lastInsertRowid);
+    demoUserId = Number(demoInfo.lastInsertRowid);
 
     // 示例消息（chat 会话，conversation_id = 频道 id）
     insertMessage.run(channelIdByKey['minglun:图书馆'], demoUserId, 'chat', channelIdByKey['minglun:图书馆'], '明伦图书馆今天安静又舒服 📚', nowIso());
@@ -227,6 +234,9 @@ export function seedIfEmpty() {
     insertPost.run(channelIdByKey['minglun:东操场'], demoUserId, '【约跑】今晚东操场 5 公里', '19:30 操场南门集合，配速 6 分，新手友好！', '运动', nowIso());
     insertPost.run(channelIdByKey['jinming:图书馆'], demoUserId, '【资料分享】高数期末复习笔记', '整理了一份高数知识点汇总，需要的同学评论区扣 1', '学习', nowIso());
   })();
+
+  // 演示用户的新手礼包（在 seed 事务外发放，避免嵌套事务）
+  if (demoUserId) grantStarterPack(demoUserId);
 
   return true;
 }
@@ -307,5 +317,95 @@ export function ensureAchievements() {
   );
   for (const a of TRIGGER_ACHIEVEMENTS) {
     insertTrigger.run(a.code, a.name, a.description, a.hint, a.icon, a.type);
+  }
+}
+
+// 演示剧情（确保存在；策划正式内容走 POST /api/stories/import）
+const DEMO_STORIES = [
+  {
+    code: 'freshman-week',
+    title: '新生周打卡',
+    subtitle: '用七天认识你的校园',
+    cover: '🎒',
+    category: '日常',
+    obtainMode: 'claim',
+    availability: 'permanent',
+    rewards: {
+      exp: 50,
+      coin: 100,
+      items: [{ name: '开学纪念徽章', icon: '🎖️', rarity: 'rare', description: '完成新生周打卡的证明。' }],
+    },
+    nodes: [
+      { seq: 1, title: '逛一圈校园', description: '线下走一遍你的校区', checkinType: 'photo', tips: '拍一张校园地标照片' },
+      { seq: 2, title: '吃一次食堂', description: '去食堂吃一顿饭', checkinType: 'none' },
+      { seq: 3, title: '去一次图书馆', description: '在图书馆坐一会儿', checkinType: 'text', tips: '写一句你的感受' },
+    ],
+  },
+  {
+    code: 'library-seven-days',
+    title: '图书馆七日谈',
+    subtitle: '连续打卡，把习惯种进书页',
+    cover: '📚',
+    category: '成长',
+    obtainMode: 'claim',
+    availability: 'permanent',
+    rewards: { exp: 30, coin: 50 },
+    nodes: [
+      { seq: 1, title: '第一天', description: '在图书馆待 30 分钟', checkinType: 'none' },
+      { seq: 2, title: '第二天', description: '在图书馆待 30 分钟', checkinType: 'none' },
+      { seq: 3, title: '第三天', description: '在图书馆待 30 分钟', checkinType: 'none' },
+    ],
+  },
+  {
+    code: 'school-festival',
+    title: '校庆限定·回望来路',
+    subtitle: '校庆周限定剧情，过期不候',
+    cover: '🎉',
+    category: '节日',
+    obtainMode: 'claim',
+    availability: 'festival',
+    festivalCode: 'anniversary',
+    timeboxed: true,
+    rewards: {
+      exp: 80,
+      coin: 150,
+      items: [{ name: '校庆限定徽章', icon: '🏵️', rarity: 'epic', description: '校庆周限定，见证这一刻。' }],
+    },
+    nodes: [
+      { seq: 1, title: '打卡校门牌坊', description: '到大门牌坊拍张照', checkinType: 'photo' },
+      { seq: 2, title: '给母校写一句祝福', description: '写一句祝福语', checkinType: 'text' },
+    ],
+  },
+];
+
+// 幂等：确保演示剧情存在（按 code 判重，绝不覆盖已导入内容）
+export function ensureStories() {
+  const now = nowIso();
+  const winStart = now;
+  const winEnd = new Date(Date.now() + 180 * 86400000).toISOString();
+
+  const insStory = db.prepare(
+    `INSERT INTO stories (code, title, subtitle, cover, category, obtain_mode, availability,
+       window_start_at, window_end_at, festival_code, sequential, timeboxed, rewards_json, sort_order, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'published', ?, ?)`
+  );
+  const insNode = db.prepare('INSERT INTO story_nodes (story_id, seq, title, description, checkin_type, tips, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+
+  for (const s of DEMO_STORIES) {
+    if (db.prepare('SELECT id FROM stories WHERE code = ?').get(s.code)) continue;
+    const info = insStory.run(
+      s.code, s.title, s.subtitle, s.cover, s.category, s.obtainMode, s.availability,
+      s.availability === 'festival' ? winStart : null,
+      s.availability === 'festival' ? winEnd : null,
+      s.festivalCode || null,
+      s.sequential === false ? 0 : 1,
+      s.timeboxed ? 1 : 0,
+      JSON.stringify(s.rewards || { exp: 0, coin: 0, items: [] }),
+      now, now
+    );
+    const storyId = Number(info.lastInsertRowid);
+    for (const n of s.nodes) {
+      insNode.run(storyId, n.seq, n.title, n.description, n.checkinType || 'none', n.tips || '', now);
+    }
   }
 }

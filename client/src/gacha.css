@@ -1,0 +1,171 @@
+/* ============================================================
+   Campus Online · 卡池（抽卡中心，参考原神 / 鸣潮的祈愿页）
+   在 story.css 之后加载，复用 --mk-* 变量；样式锁在 .gacha-* 作用域。
+   ============================================================ */
+
+.gacha-page {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  overflow-y: auto;
+  padding: 28px 40px 40px;
+  color: var(--text);
+  position: relative;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(143, 211, 255, 0.12), transparent 60%),
+    radial-gradient(1000px 700px at 10% 110%, rgba(155, 138, 209, 0.14), transparent 60%),
+    #0b0b10;
+}
+
+/* 顶部标题 */
+.gacha-head { margin-bottom: 18px; }
+.gacha-title { font-size: 24px; font-weight: 700; letter-spacing: 2px; }
+.gacha-sub { font-size: 12px; color: var(--mk-label); margin-top: 4px; letter-spacing: 1px; }
+
+/* 分页页签（子页面切换） */
+.gacha-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+.gacha-tab {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 22px; border-radius: 14px; cursor: pointer;
+  font-size: 14px; letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all .2s ease;
+}
+.gacha-tab:hover { color: #fff; border-color: rgba(255, 255, 255, 0.22); }
+.gacha-tab.active {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(143, 211, 255, 0.16), rgba(143, 211, 255, 0.05));
+  border-color: rgba(143, 211, 255, 0.5);
+  box-shadow: 0 0 22px rgba(143, 211, 255, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.gacha-tab-ico { font-size: 16px; }
+
+/* 祈愿横幅（banner） */
+.gacha-banner {
+  margin-bottom: 20px; border-radius: 20px; overflow: hidden;
+  background: #121216; border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.gacha-banner-hero {
+  position: relative; padding: 42px 24px 34px; text-align: center;
+  background:
+    radial-gradient(460px 240px at 50% 0%, var(--glow), transparent 70%),
+    linear-gradient(180deg, #16161d, #0e0e13);
+  overflow: hidden;
+}
+.gacha-banner-rings {
+  position: absolute; left: 50%; top: 50%; width: 220px; height: 220px;
+  transform: translate(-50%, -50%); border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--glow) 45%, transparent);
+  box-shadow: 0 0 60px color-mix(in srgb, var(--glow) 35%, transparent), inset 0 0 40px color-mix(in srgb, var(--glow) 18%, transparent);
+}
+.gacha-banner-rings::after {
+  content: ''; position: absolute; inset: 26px; border-radius: 50%;
+  border: 1px dashed color-mix(in srgb, var(--glow) 55%, transparent);
+  animation: gacha-spin 24s linear infinite;
+}
+.gacha-banner-emblem {
+  position: relative; font-size: 64px; line-height: 1;
+  filter: drop-shadow(0 0 18px var(--glow));
+  animation: gacha-float 3.4s ease-in-out infinite;
+}
+.gacha-banner-name { position: relative; margin-top: 14px; font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+.gacha-banner-desc { position: relative; margin-top: 6px; font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.gacha-banner-body { padding: 20px 24px; }
+
+/* 信息行 / 分区标题 */
+.gacha-info-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.gacha-info-chip {
+  padding: 8px 14px; border-radius: 12px; font-size: 13px; color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.gacha-info-chip b { color: var(--mk-num); }
+.gacha-section-title { font-size: 12px; letter-spacing: 1px; color: var(--mk-label); margin-bottom: 12px; }
+
+/* 金币奖池：奖励列表 */
+.gacha-prize-list { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
+.gacha-prize {
+  min-width: 84px; padding: 14px 12px; text-align: center; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--c) 18%, transparent);
+}
+.gacha-prize-ico { font-size: 24px; }
+.gacha-prize-val { margin-top: 4px; font-size: 15px; font-weight: 700; color: var(--c); }
+
+/* 剧情奖池：剧情条目 */
+.gacha-story-entries { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
+.gacha-story-entry {
+  display: flex; align-items: center; gap: 10px; min-width: 150px; padding: 12px 14px;
+  border-radius: 14px; background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08); transition: border-color .15s ease;
+}
+.gacha-story-entry:hover { border-color: rgba(143, 211, 255, 0.4); }
+.gacha-story-entry.owned { opacity: 0.4; }
+.gacha-story-entry-cover { font-size: 26px; }
+.gacha-story-entry-name { font-size: 13px; color: rgba(255, 255, 255, 0.8); }
+
+/* 祈愿按钮 */
+.gacha-draw-row { display: flex; justify-content: center; }
+.gacha-draw-btn {
+  position: relative; overflow: hidden;
+  padding: 14px 40px; border: none; border-radius: 999px; cursor: pointer;
+  font-size: 16px; font-weight: 700; letter-spacing: 2px; color: #1a1407;
+  background: linear-gradient(180deg, #ffe29a, #f5c84c 45%, #d9a41f);
+  box-shadow: 0 8px 30px rgba(245, 198, 76, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.gacha-draw-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 36px rgba(245, 198, 76, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.5); }
+.gacha-draw-btn:disabled { opacity: 0.6; cursor: default; }
+.gacha-draw-btn::after {
+  content: ''; position: absolute; top: -20%; left: -40%; width: 40%; height: 140%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  animation: gacha-shine 2.6s ease-in-out infinite;
+}
+.gacha-locked { font-size: 13px; color: rgba(255, 255, 255, 0.45); }
+
+/* 加载 / 空态 */
+.gacha-loading { margin: 40px auto; text-align: center; color: rgba(255, 255, 255, 0.4); letter-spacing: 2px; }
+.gacha-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 200px; border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: 20px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.gacha-empty-ico { font-size: 40px; margin-bottom: 10px; }
+
+/* 抽卡结果揭示（overlay） */
+.gacha-reveal-backdrop {
+  position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.72); backdrop-filter: blur(8px);
+}
+.gacha-reveal {
+  position: relative; width: 340px; padding: 36px 28px 28px; text-align: center;
+  border-radius: 22px; background:
+    radial-gradient(400px 220px at 50% -10%, var(--c), transparent 65%),
+    linear-gradient(180deg, #1a1a21, #0e0e13);
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  box-shadow: 0 0 80px color-mix(in srgb, var(--c) 30%, transparent);
+  animation: gacha-reveal-in .4s cubic-bezier(.2, 1.4, .4, 1);
+}
+.gacha-reveal-star {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  font-size: 18px; color: var(--c); animation: gacha-star-pulse 1.4s ease-in-out infinite;
+}
+.gacha-reveal-emoji {
+  margin-top: 12px; font-size: 72px; line-height: 1;
+  filter: drop-shadow(0 0 20px var(--c)); animation: gacha-float 2.6s ease-in-out infinite;
+}
+.gacha-reveal-title { margin-top: 16px; font-size: 19px; font-weight: 700; color: #fff; }
+.gacha-reveal-sub { margin-top: 8px; font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.gacha-reveal-btn {
+  margin-top: 22px; padding: 10px 32px; border-radius: 999px; cursor: pointer;
+  font-size: 14px; letter-spacing: 1px; color: #fff;
+  background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.gacha-reveal-btn:hover { background: rgba(255, 255, 255, 0.16); }
+
+@keyframes gacha-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes gacha-spin { to { transform: rotate(360deg); } }
+@keyframes gacha-shine { 0% { transform: translateX(-160%) rotate(20deg); } 60%, 100% { transform: translateX(320%) rotate(20deg); } }
+@keyframes gacha-reveal-in { 0% { transform: scale(.7); opacity: 0; } 60% { transform: scale(1.04); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes gacha-star-pulse { 0%, 100% { opacity: .25; transform: translateX(-50%) scale(.8); } 50% { opacity: .9; transform: translateX(-50%) scale(1.3); } }

@@ -6,6 +6,10 @@
 // 等级规则：level = floor(exp / 100) + 1
 export const levelOf = (exp) => Math.floor(exp / 100) + 1;
 
+// 橱窗展览位 = min(上限, 基础位 + floor(等级 / 每档等级))；服务端唯一来源，客户端不重算
+export const showcaseSlots = (level) =>
+  Math.min(config.showcase.maxSlots, config.showcase.baseSlots + Math.floor(Math.max(1, Number(level) || 1) / config.showcase.levelStep));
+
 export const config = {
   // 经验（等级成长，只发不扣）
   exp: {
@@ -76,6 +80,23 @@ export const config = {
   lottery: {
     cost: 50,
     prizes: [5, 10, 20, 50, 100, 200],
+  },
+  // 背包 / 橱窗
+  showcase: {
+    baseSlots: 3,  // 初始展览位
+    levelStep: 5,  // 每升 5 级 +1 位
+    maxSlots: 10,  // 展览位上限
+  },
+  // 剧情
+  story: {
+    anniversaryDays: 365, // 使用剧情满 N 天后「时间线故事书」解锁定稿
+  },
+  // 虚拟角色（像素装扮）
+  character: {
+    slots: ['hair', 'hat', 'outfit', 'shoes', 'accessory'], // 装备栏位（渲染从底到顶）
+    skinTones: ['fair', 'warm', 'tan', 'deep'],             // 肤色档位
+    bodies: ['slim', 'standard', 'sturdy'],                 // 体型档位
+    faces: ['neutral', 'happy', 'cool', 'shy'],             // 表情档位
   },
 };
 

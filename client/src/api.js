@@ -239,6 +239,54 @@ export const api = {
   triggerAchievement: (code) => request('/api/achievements/trigger', { method: 'POST', body: JSON.stringify({ code }) }),
   trackPageOpen: (page) => request('/api/achievements/page-open', { method: 'POST', body: JSON.stringify({ page }) }),
   world: () => request('/api/world'),
+  // 背包 / 橱窗
+  inventory: () => request('/api/inventory'),
+  inventoryShowcase: () => request('/api/inventory/showcase'),
+  inventoryShowcaseUser: (id) => request(`/api/inventory/showcase/${encodeURIComponent(id)}`),
+  inventorySetShowcase: (id, slot) => request(`/api/inventory/${id}/showcase`, { method: 'POST', body: JSON.stringify({ slot }) }),
+  inventoryRemoveShowcase: (id) => request(`/api/inventory/${id}/showcase`, { method: 'DELETE' }),
+  inventorySell: (id, priceCoin) => request(`/api/inventory/${id}/sell`, { method: 'POST', body: JSON.stringify({ priceCoin }) }),
+  inventoryUnlist: (id) => request(`/api/inventory/${id}/unlist`, { method: 'POST' }),
+  // 剧情系统
+  stories: () => request('/api/stories'),
+  story: (id) => request(`/api/stories/${id}`),
+  storyClaim: (id) => request(`/api/stories/${id}/claim`, { method: 'POST' }),
+  storyCheckin: (id, body) => request(`/api/stories/${id}/checkin`, { method: 'POST', body: JSON.stringify(body) }),
+  storyMine: () => request('/api/stories/mine'),
+  storyTimeline: () => request('/api/stories/timeline'),
+  storyImport: (body) => request('/api/stories/import', { method: 'POST', body: JSON.stringify(body) }),
+  storyPools: () => request('/api/stories/pools'),
+  storyPoolDraw: (id) => request(`/api/stories/pools/${id}/draw`, { method: 'POST' }),
+  storyPoolImport: (body) => request('/api/stories/pools/import', { method: 'POST', body: JSON.stringify(body) }),
+  // 打卡图片上传（raw 二进制，非 JSON）
+  storyUpload: async (file) => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
+    const headers = { 'Content-Type': file.type };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch('/api/stories/upload', { method: 'POST', headers, body: file });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      const err = new Error(data?.error || `上传失败（HTTP ${res.status}）`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
+  // 虚拟角色（形象）
+  character: () => request('/api/character'),
+  characterBase: (body) => request('/api/character/base', { method: 'PUT', body: JSON.stringify(body) }),
+  characterEquip: (body) => request('/api/character/equip', { method: 'PUT', body: JSON.stringify(body) }),
+  characterUser: (id) => request(`/api/character/${encodeURIComponent(id)}`),
+  // 装扮奖池（卡池 · 装扮祈愿）
+  wardrobe: () => request('/api/wardrobe'),
+  wardrobePools: () => request('/api/wardrobe/pools'),
+  wardrobePoolDraw: (id) => request(`/api/wardrobe/pools/${id}/draw`, { method: 'POST' }),
+  wardrobePoolImport: (body) => request('/api/wardrobe/pools/import', { method: 'POST', body: JSON.stringify(body) }),
   // 信息大厅
   informationSearch: (q) => request(`/api/information/search?q=${encodeURIComponent(q)}`),
   informationPosts: (params = {}) => {

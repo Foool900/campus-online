@@ -1,0 +1,114 @@
+/* ============================================================
+   Campus Online · 虚拟角色（形象页）
+   沿用夜市深空暗黑主题，复用 --mk-* 变量；样式锁在 .char-page 作用域。
+   ============================================================ */
+
+.char-page {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.char-loading { margin: auto; color: rgba(255, 255, 255, 0.4); letter-spacing: 2px; }
+
+.char-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 24px;
+  padding: 28px 36px;
+  overflow: hidden;
+}
+
+/* 左：预览 */
+.char-preview {
+  flex-shrink: 0;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #141416;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+}
+.char-preview canvas {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  box-shadow: 0 0 40px rgba(143, 211, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.char-preview-meta { font-size: 12px; color: var(--mk-label); letter-spacing: 1px; }
+
+/* 右：定制面板 */
+.char-panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.char-section {
+  padding: 16px;
+  background: #141416;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--mk-radius-sm);
+}
+.char-section-title { font-size: 14px; letter-spacing: 1px; color: var(--mk-num); margin-bottom: 14px; }
+
+.char-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.char-row:last-child { margin-bottom: 0; }
+.char-row-label { width: 40px; font-size: 12px; color: var(--mk-label); flex-shrink: 0; }
+.char-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+.char-chip:hover { color: #fff; }
+.char-chip.active {
+  color: #8fd3ff;
+  border-color: rgba(143, 211, 255, 0.5);
+  background: rgba(143, 211, 255, 0.12);
+  box-shadow: 0 0 12px rgba(143, 211, 255, 0.25);
+}
+
+/* 部位 */
+.char-slot { padding: 12px 0; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.char-slot:first-child { border-top: none; }
+.char-slot-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.char-slot-name { font-size: 13px; font-weight: 600; }
+.char-slot-current { font-size: 12px; color: #34d399; }
+.char-slot-empty { font-size: 12px; color: rgba(255, 255, 255, 0.35); }
+.char-slot-items { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.char-slot-none { font-size: 12px; color: rgba(255, 255, 255, 0.3); }
+.char-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  transition: background .15s ease, border-color .15s ease;
+}
+.char-item:hover { background: rgba(143, 211, 255, 0.1); border-color: rgba(143, 211, 255, 0.3); }
+.char-item.equipped {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: rgba(52, 211, 153, 0.1);
+  color: #34d399;
+}
+.char-item-icon { font-size: 18px; }
+.char-unequip { margin-left: 4px; }

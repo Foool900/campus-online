@@ -5,6 +5,10 @@ import './styles.css';
 import './hud.css';
 import './market.css';
 import './information.css';
+import './backpack.css';
+import './character.css';
+import './story.css';
+import './gacha.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

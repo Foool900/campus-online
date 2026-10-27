@@ -55,11 +55,26 @@ export default function TasksPage() {
   const [tags, setTags] = useState('');
   const [rewardCoin, setRewardCoin] = useState('0');
   const [deadlineAt, setDeadlineAt] = useState('');
+  const [stories, setStories] = useState([]);
+  const [storyId, setStoryId] = useState('');
+  const [wardrobeItems, setWardrobeItems] = useState([]);
+  const [rewardWardrobeCode, setRewardWardrobeCode] = useState('');
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     api.wallet().then(setWallet).catch(() => {});
     api.coinConfig().then(setCoinConfig).catch(() => {});
   }, []);
+
+  // 管理员可给任务关联剧情（完成任务后解锁），加载剧情下拉选项
+  useEffect(() => {
+    if (isAdmin) api.stories().then(setStories).catch(() => {});
+  }, [isAdmin]);
+
+  // 管理员可给任务设置装扮奖励，加载装扮图鉴下拉选项
+  useEffect(() => {
+    if (isAdmin) api.wardrobe().then(setWardrobeItems).catch(() => {});
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!user) return;
@@ -102,12 +117,16 @@ export default function TasksPage() {
         tags: tagList,
         rewardCoin: reward,
         deadlineAt: deadlineAt || null,
+        storyId: isAdmin && type === 'public' && storyId ? Number(storyId) : null,
+        rewardWardrobeCode: isAdmin && type === 'public' && rewardWardrobeCode ? rewardWardrobeCode : null,
       });
       setTitle('');
       setDescription('');
       setTags('');
       setRewardCoin('0');
       setDeadlineAt('');
+      setStoryId('');
+      setRewardWardrobeCode('');
       setPubOpen(false);
       refreshWallet();
       refresh();
@@ -205,6 +224,28 @@ export default function TasksPage() {
               <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="如：跑腿, 学习" />
             </div>
           </div>
+          {isAdmin && type === 'public' && (
+            <div className="field">
+              <label>关联剧情（完成任务后自动解锁，仅管理员）</label>
+              <select value={storyId} onChange={(e) => setStoryId(e.target.value)}>
+                <option value="">不关联</option>
+                {stories.map((s) => (
+                  <option key={s.id} value={s.id}>{s.cover} {s.title}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {isAdmin && type === 'public' && (
+            <div className="field">
+              <label>装扮奖励（验收后向接取者发放，仅管理员）</label>
+              <select value={rewardWardrobeCode} onChange={(e) => setRewardWardrobeCode(e.target.value)}>
+                <option value="">无装扮奖励</option>
+                {wardrobeItems.map((w) => (
+                  <option key={w.code} value={w.code}>{w.icon} {w.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="field">
             <label>描述</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="补充说明（可选）" rows={2} />
@@ -240,6 +281,7 @@ export default function TasksPage() {
               )}
               <div className="todo-meta" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span className="reward-chip">+{t.rewardCoin} 金币</span>
+                {t.rewardWardrobeName && <span className="task-tag">{t.rewardWardrobeIcon || '🧥'} {t.rewardWardrobeName}</span>}
                 <span className="meta-item">PUB {t.publisherName}</span>
                 {t.assigneeId && <span className="meta-item">ASG {t.assigneeName}</span>}
                 {t.deadlineAt && <span className="meta-item">DL {formatTime(t.deadlineAt)}</span>}

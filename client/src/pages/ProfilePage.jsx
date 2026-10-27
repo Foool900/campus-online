@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
 import { useAchievementToast } from '../components/AchievementToast.jsx';
 import { COLLEGES } from '../colleges.js';
+import PixelAvatar from '../components/PixelAvatar.jsx';
 
 const ROLE_LABELS = { member: '会员（未认证）', student: '学员（已认证）', admin: '管理员' };
 
@@ -50,6 +51,7 @@ const METRIC_LABEL = {
   exp_total: '经验',
   areas_visited: '区域',
   page_opens: '打开',
+  inventory_items: '物品',
 };
 
 // 判断图标是否为图片 URL/路径（否则按 emoji 文本渲染）
@@ -484,6 +486,11 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [charData, setCharData] = useState(null);
+
+  useEffect(() => {
+    api.character().then(setCharData).catch(() => {});
+  }, []);
 
   if (!user) {
     return (
@@ -532,7 +539,11 @@ export default function ProfilePage() {
 
       <aside className="profile-sidebar">
         <div className="ps-user">
-          <div className="ps-avatar"><span className="ps-avatar-em">{user.avatar || '🎓'}</span></div>
+          <div className="ps-avatar">
+            {charData
+              ? <PixelAvatar base={charData.base} equipped={charData.equipped} size={64} />
+              : <span className="ps-avatar-em">{user.avatar || '🎓'}</span>}
+          </div>
           <div className="ps-nick">{user.nickname}</div>
           <div className="ps-level">LV {user.level} · {user.exp} XP</div>
           <div className="ps-level">🪙 {user.coin ?? 0}（冻结 {user.frozenCoin ?? 0}）</div>
@@ -561,11 +572,16 @@ export default function ProfilePage() {
               <h2 className="ps-section-title">[ BASIC_INFO ]</h2>
 
               <div className="ps-basic">
-                <div className="ps-avatar ps-avatar-lg"><span className="ps-avatar-em">{user.avatar || '🎓'}</span></div>
+                <div className="ps-avatar ps-avatar-lg">
+                  {charData
+                    ? <PixelAvatar base={charData.base} equipped={charData.equipped} size={112} />
+                    : <span className="ps-avatar-em">{user.avatar || '🎓'}</span>}
+                </div>
                 <div className="ps-basic-info">
                   <div className="ps-basic-nick">{user.nickname}</div>
                   <div className="ps-basic-college">{user.college || '未填写学院'}</div>
                   <div className="ps-basic-role">{ROLE_LABELS[user.role] || user.role}</div>
+                  <button type="button" className="hud-btn" style={{ marginTop: 10 }} onClick={() => navigate('/character')}>编辑形象</button>
                 </div>
               </div>
 

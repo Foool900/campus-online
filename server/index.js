@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { initDb, db, nowIso } from './db.js';
 import { ensureSystemAccount } from './treasury.js';
-import { seedIfEmpty, ensureWorldChannel, ensureAdmin, ensureAchievements } from './seed.js';
+import { seedIfEmpty, ensureWorldChannel, ensureAdmin, ensureAchievements, ensureStories } from './seed.js';
 import { bumpPresence, presenceList, bumpGlobalPresence } from './presence.js';
 import areasRouter from './routes/areas.js';
 import channelsRouter from './routes/channels.js';
@@ -21,6 +21,9 @@ import signinRouter from './routes/signin.js';
 import marketRouter, { ensureMarketShops, drawStalls, settleSession, expireStalls, expireReservedStalls, expireBargainPayments, releaseBlindboxHolds, settleDueShopTerms } from './routes/market.js';
 import lotteryRouter from './routes/lottery.js';
 import tasksRouter, { expireOverdueTasks } from './routes/tasks.js';
+import { finalizeDueTimelines } from './story.js';
+import { ensureWardrobe } from './wardrobe.js';
+import { ensureWardrobePools } from './wardrobe-gacha.js';
 import stickersRouter from './routes/stickers.js';
 import authRouter from './routes/auth.js';
 import verificationRouter from './routes/verification.js';
@@ -28,16 +31,23 @@ import friendsRouter from './routes/friends.js';
 import conversationsRouter from './routes/conversations.js';
 import adminRouter from './routes/admin.js';
 import informationRouter from './routes/information.js';
+import inventoryRouter from './routes/inventory.js';
+import storyRouter from './routes/stories.js';
+import characterRouter from './routes/character.js';
+import wardrobeRouter from './routes/wardrobe.js';
 import { requireAuth, getSessionUser } from './auth.js';
 import { triggerAchievement, notifyNewProgressAchievements } from './achievements.js';
 import errorHandler from './error-handler.js';
 
 // 初始化数据库表结构与种子数据（仅在空库时写入）
 initDb();
+ensureWardrobe(); // 先于 seedIfEmpty/注册：新手礼包里的装扮需要模板已入库
+ensureWardrobePools(); // 装扮奖池演示数据（依赖模板已入库）
 const seeded = seedIfEmpty();
 ensureWorldChannel();
 ensureAdmin();
 ensureAchievements();
+ensureStories();
 ensureMarketShops();
 ensureSystemAccount();
 if (seeded) {
@@ -85,6 +95,10 @@ app.use('/api', friendsRouter);
 app.use('/api', conversationsRouter);
 // 信息大厅：挂在 adminRouter 之前（admin 路由带无路径 requireRole，会拦截所有 /api/*）
 app.use('/api/information', informationRouter);
+app.use('/api', inventoryRouter);
+app.use('/api', storyRouter);
+app.use('/api', characterRouter);
+app.use('/api', wardrobeRouter);
 app.use('/api', adminRouter);
 
 // 未匹配的 /api 路由
@@ -300,6 +314,10 @@ httpServer.listen(PORT, () => {
 // 超时任务扫描：启动即扫一次，之后每分钟扫一次（到期退回 / 自动通过 + 通知）
 expireOverdueTasks(io);
 setInterval(() => expireOverdueTasks(io), 60 * 1000);
+
+// 时间线故事书定稿扫描：启动即扫一次，之后每分钟扫一次（1 周年快照 + 发纪念物品）
+finalizeDueTimelines();
+setInterval(() => finalizeDueTimelines(), 60 * 1000);
 
 // 夜市生命周期：报名抽签 → 开市 → 闭市 → 结算（每 30s 扫一次）
 function tickMarket() {

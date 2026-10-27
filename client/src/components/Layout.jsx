@@ -204,11 +204,13 @@ export default function Layout({ children }) {
           onToggleEdit={() => setEditing((v) => !v)}
           onGacha={gacha}
           onTasks={() => navigate('/tasks')}
-          onBag={() => say('「背包」还未开发')}
+          onBag={() => navigate('/bag')}
           onSettings={() => navigate('/settings')}
           onProfile={() => navigate('/profile')}
           onLeaderboard={() => navigate('/leaderboard')}
           onAchievements={() => navigate('/profile?tab=achievements')}
+          onStory={() => navigate('/story')}
+          onCharacter={() => navigate('/character')}
         />
       ) : (
         <>
@@ -229,8 +231,10 @@ export default function Layout({ children }) {
             onTasks={() => navigate('/tasks')}
             onSignin={() => navigate('/signin')}
             onMarket={() => navigate('/market')}
-            onBag={() => say('「背包」还未开发')}
+            onBag={() => navigate('/bag')}
             onSettings={() => navigate('/settings')}
+            onStory={() => navigate('/story')}
+            onCharacter={() => navigate('/character')}
           />
         </>
       )}

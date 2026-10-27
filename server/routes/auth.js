@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { db, nowIso } from '../db.js';
 import { hashPassword, verifyPassword, createSession, destroySession, requireAuth, readToken, getSessionUser } from '../auth.js';
 import { levelOf } from '../config.js';
-import { notifyAchievement } from '../achievements.js';
+import { notifyAchievement, notifyNewProgressAchievements } from '../achievements.js';
+import { grantStarterPack } from '../inventory.js';
 
 const router = Router();
 
@@ -57,7 +58,9 @@ router.post('/auth/register', (req, res) => {
     .prepare("INSERT INTO users (nickname, college, avatar, exp, role, password_hash, created_at) VALUES (?, ?, '🎓', 0, 'member', ?, ?)")
     .run(name, col, hashPassword(password), nowIso());
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+  grantStarterPack(user.id); // 新手礼包（背包首件物品）
   notifyAchievement(user.id, 'EXP_001', req.app.get('io'));
+  notifyNewProgressAchievements(user.id, req.app.get('io'));
   res.status(201).json({ user: mapUser(user), token: createSession(user.id) });
 });
 

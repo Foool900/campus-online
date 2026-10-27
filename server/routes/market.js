@@ -6,6 +6,8 @@ import { config } from '../config.js';
 import { applyCoinRaw } from '../coin.js';
 import { systemAccountId } from '../treasury.js';
 import { containsSensitiveWord } from '../utils/sensitive-words.js';
+import { grantInventoryItem, transferInventoryItemOnSale, expireListedInventory } from '../inventory.js';
+import { notifyNewProgressAchievements } from '../achievements.js';
 
 const router = Router();
 
@@ -270,7 +272,7 @@ function contentJsonHasSensitive(cj) {
  * 缺省/空串 → 惊喜盲盒；入库前统一序列化为 JSON 字符串。对象格式约定为 `{ text: string }`，
  * 其它字段不保证被处理（也不参与敏感词校验）。
  */
-export function createItem(userId, { sessionId, title, description, priceCoin, type = 'normal', stock = 1, contentJson = null }) {
+export function createItem(userId, { sessionId, title, description, priceCoin, type = 'normal', stock = 1, contentJson = null, icon = '📦', rarity = 'common', wardrobeCode = null }) {
   const sys = assertNotSystem(userId);
   if (sys) return sys;
   const session = getSession(sessionId);
@@ -286,11 +288,20 @@ export function createItem(userId, { sessionId, title, description, priceCoin, t
   if (containsSensitiveWord(t) || containsSensitiveWord((description || '').toString()) || contentJsonHasSensitive(contentJson)) {
     return { error: '内容包含违规词，请修改', code: 'SENSITIVE_CONTENT', status: 400 };
   }
+  const rar = ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarity) ? rarity : 'common';
+
+  // 官方自营装扮：引用图鉴模板（成交后买家获得一件对应装扮）
+  let wardrobeItemId = null;
+  if (wardrobeCode != null && wardrobeCode !== '') {
+    const w = db.prepare('SELECT id FROM wardrobe_items WHERE code = ?').get(String(wardrobeCode));
+    if (!w) return { error: '装扮模板不存在', code: 'WARDROBE_NOT_FOUND', status: 400 };
+    wardrobeItemId = w.id;
+  }
 
   const key = `item:${sessionId}:${userId}:${randomBytes(8).toString('hex')}`;
   const r = runTx(() => {
-    const info = db.prepare("INSERT INTO market_items (session_id, seller_id, type, title, description, price_coin, stock, status, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)")
-      .run(sessionId, userId, type, t, (description || '').toString().trim(), price, stock, key, nowIso());
+    const info = db.prepare("INSERT INTO market_items (session_id, seller_id, type, title, description, price_coin, stock, status, icon, rarity, wardrobe_item_id, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)")
+      .run(sessionId, userId, type, t, (description || '').toString().trim(), price, stock, icon, rar, wardrobeItemId, key, nowIso());
     const itemId = Number(info.lastInsertRowid);
 
     if (type === 'blindbox') {
@@ -314,6 +325,7 @@ function mapItem(row) {
     id: row.id, sessionId: row.session_id, stallId: row.stall_id, shopId: row.shop_id, sellerId: row.seller_id,
     type: row.type, title: row.title, description: row.description, priceCoin: row.price_coin, stock: row.stock,
     soldCount: row.sold_count, status: row.status, isOfficial: !!row.is_official, flashSaleAt: row.flash_sale_at,
+    icon: row.icon, rarity: row.rarity, inventoryItemId: row.inventory_item_id, wardrobeItemId: row.wardrobe_item_id,
     createdAt: row.created_at, soldAt: row.sold_at,
     sellerName: row.seller_name, sellerAvatar: row.seller_avatar,
   };
@@ -536,7 +548,8 @@ export function confirmOrder(buyerId, orderId) {
   if (order.buyer_id !== buyerId) return { error: '不是你的订单', status: 403 };
   if (!['paid_escrow', 'delivered'].includes(order.status)) return { error: '当前状态不可确认', status: 409 };
 
-  const itemSessionId = db.prepare('SELECT session_id FROM market_items WHERE id=?').get(order.item_id)?.session_id;
+  const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(order.item_id);
+  const itemSessionId = item?.session_id;
   const fee = order.fee_coin;
   const net = order.price_coin - fee;
   const key = `order:${orderId}:confirm`;
@@ -560,6 +573,25 @@ export function confirmOrder(buyerId, orderId) {
     // 商品：单件转 sold；多件判断 sold_count
     db.prepare("UPDATE market_items SET status='sold', sold_at=? WHERE id=? AND stock=1").run(nowIso(), order.item_id);
     db.prepare("UPDATE market_items SET status='sold' WHERE id=? AND stock>1 AND sold_count>=stock").run(order.item_id);
+
+    // 物品实体入买家背包（盲盒的开盒结果另计，不在此生成）
+    if (item && item.type !== 'blindbox') {
+      if (item.inventory_item_id) {
+        // 背包寄售来源：直接把物品所有权转给买家
+        transferInventoryItemOnSale(item.inventory_item_id, buyerId, orderId, order.price_coin);
+      } else {
+        // 市场自营商品：按商品身份生成一件新物品
+        grantInventoryItem(buyerId, {
+          name: item.title,
+          icon: item.icon,
+          description: item.description,
+          rarity: item.rarity,
+          source: 'market',
+          sourceRefId: orderId,
+          wardrobeItemId: item.wardrobe_item_id, // 官方自营装扮：引用图鉴模板
+        });
+      }
+    }
 
     // 信誉事件：完成 + 实时重算
     db.prepare("INSERT OR IGNORE INTO market_reputation_events (user_id, order_id, event, created_at) VALUES (?, ?, 'completion', ?)").run(order.seller_id, orderId, nowIso());
@@ -1187,6 +1219,8 @@ export function settleSession(sessionId) {
 
     // 未售商品过期
     db.prepare("UPDATE market_items SET status='expired' WHERE session_id=? AND status IN ('active','reserved')").run(sessionId);
+    // 背包寄售：该期次挂牌未成交的物品退回背包（held）
+    expireListedInventory(sessionId);
     // 未接受砍价过期 + 退款
     const pendingBargains = db.prepare("SELECT * FROM market_bargains WHERE item_id IN (SELECT id FROM market_items WHERE session_id=?) AND status='pending'").all(sessionId);
     for (const b of pendingBargains) {
@@ -1480,6 +1514,7 @@ router.post('/market/orders/:id/deliver', requireRole('student', 'admin'), (req,
 router.post('/market/orders/:id/confirm', requireRole('student', 'admin'), (req, res) => {
   const r = confirmOrder(req.user.id, Number(req.params.id));
   if (r.error) return res.status(r.status).json({ error: r.error, ...(r.code ? { code: r.code } : {}) });
+  notifyNewProgressAchievements(req.user.id, req.app.get('io'));
   res.json(r);
 });
 

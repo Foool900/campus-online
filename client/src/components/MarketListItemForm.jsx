@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
 // 盲盒保证金/保底：与后端 listItem 同一公式、同一 ratio（缺省 0.8 / 0.1）
@@ -16,6 +16,10 @@ export default function MarketListItemForm({ myStall, open, mktConfig, sessionId
   const [type, setType] = useState('normal');
   const [description, setDescription] = useState('');
   const [boxContent, setBoxContent] = useState('');
+  const [wardrobeCode, setWardrobeCode] = useState('');
+  const [wardrobeItems, setWardrobeItems] = useState([]);
+
+  useEffect(() => { api.wardrobe().then(setWardrobeItems).catch(() => {}); }, []);
 
   const priceNum = Number(price);
   const blindboxPreview = type === 'blindbox' && mktConfig && Number.isInteger(priceNum) && priceNum > 0
@@ -29,6 +33,7 @@ export default function MarketListItemForm({ myStall, open, mktConfig, sessionId
 
     const body = { sessionId, title: title.trim(), priceCoin: p, type };
     if (description.trim()) body.description = description.trim();
+    if (wardrobeCode) body.wardrobeCode = wardrobeCode;
     if (type === 'blindbox') {
       body.stock = 1; // 盲盒强制单件
       if (boxContent.trim()) body.contentJson = { text: boxContent.trim() }; // 留空不传
@@ -40,7 +45,7 @@ export default function MarketListItemForm({ myStall, open, mktConfig, sessionId
       const r = await api.marketCreateItem(body);
       itemId = r.itemId;
       await api.marketListItem(itemId, { stallId: myStall.id });
-      setTitle(''); setPrice(''); setDescription(''); setBoxContent(''); setType('normal');
+      setTitle(''); setPrice(''); setDescription(''); setBoxContent(''); setType('normal'); setWardrobeCode('');
       onChanged && onChanged();
       onSuccess && onSuccess(type === 'blindbox' ? `盲盒已上架（已冻结保证金 ${amounts.deposit} 金币）` : '已上架');
     } catch (e2) {
@@ -78,6 +83,17 @@ export default function MarketListItemForm({ myStall, open, mktConfig, sessionId
         <label>商品描述</label>
         <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="补充描述（可选）" style={{ width: '100%', boxSizing: 'border-box' }} />
       </div>
+      {type === 'normal' && (
+        <div className="field" style={{ marginTop: 8 }}>
+          <label>装扮模板（可选，成交后买家获得该装扮）</label>
+          <select value={wardrobeCode} onChange={(e) => setWardrobeCode(e.target.value)}>
+            <option value="">普通商品（不关联装扮）</option>
+            {wardrobeItems.map((w) => (
+              <option key={w.code} value={w.code}>{w.icon} {w.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {type === 'blindbox' && (
         <div className="field" style={{ marginTop: 8 }}>
           <label>盲盒内容</label>

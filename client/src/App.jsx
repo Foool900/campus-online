@@ -18,6 +18,11 @@ import SignInPage from './pages/SignInPage.jsx';
 import MarketPage from './pages/MarketPage.jsx';
 import LotteryPage from './pages/LotteryPage.jsx';
 import InformationHallPage from './pages/InformationHallPage.jsx';
+import BackpackPage from './pages/BackpackPage.jsx';
+import StoryPage from './pages/StoryPage.jsx';
+import StoryDetailPage from './pages/StoryDetailPage.jsx';
+import StoryBookPage from './pages/StoryBookPage.jsx';
+import CharacterPage from './pages/CharacterPage.jsx';
 
 const TOKEN_KEY = 'campus_token';
 
@@ -81,6 +86,11 @@ export default function App() {
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/signin" element={<SignInPage />} />
             <Route path="/market" element={<MarketPage />} />
+            <Route path="/bag" element={<BackpackPage />} />
+            <Route path="/character" element={<CharacterPage />} />
+            <Route path="/story" element={<StoryPage />} />
+            <Route path="/story/timeline" element={<StoryBookPage />} />
+            <Route path="/story/:id" element={<StoryDetailPage />} />
             <Route path="/lottery" element={<LotteryPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/profile" element={<ProfilePage />} />
