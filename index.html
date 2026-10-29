@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campus Online · 校园游戏化社交平台</title>
+<style>
+  :root { --bg:#0d1421; --card:#161f31; --line:#25324d; --text:#e8edf7; --muted:#94a2bc; --accent:#4da3ff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; line-height:1.6; }
+  .wrap { max-width:1060px; margin:0 auto; padding:0 24px; }
+  header { padding:76px 0 44px; text-align:center; }
+  h1 { font-size:46px; font-weight:800; letter-spacing:1px; }
+  .tagline { color:var(--muted); font-size:18px; margin-top:12px; }
+  .btns { margin-top:30px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+  .btn { display:inline-block; padding:12px 28px; border-radius:10px; text-decoration:none; font-weight:600; font-size:15px; }
+  .btn.primary { background:var(--accent); color:#fff; }
+  .btn.ghost { border:1px solid var(--line); color:var(--text); }
+  .btn:hover { opacity:.88; }
+  .features { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; margin:44px 0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; }
+  .card h3 { font-size:16px; margin-bottom:8px; }
+  .card p { color:var(--muted); font-size:14px; }
+  h2 { font-size:22px; margin:36px 0 18px; }
+  figure { margin-bottom:28px; }
+  figure img { width:100%; border-radius:14px; border:1px solid var(--line); display:block; }
+  figcaption { text-align:center; color:var(--muted); font-size:14px; margin-top:10px; }
+  footer { text-align:center; color:var(--muted); padding:44px 0 72px; font-size:14px; }
+  footer a { color:var(--accent); text-decoration:none; }
+</style>
+</head>
+<body>
+  <header class="wrap">
+    <h1>Campus Online</h1>
+    <p class="tagline">校园游戏化社交平台 · 以游戏逻辑重构校园社交</p>
+    <div class="btns">
+      <a class="btn primary" href="http://218.244.151.114/" target="_blank" rel="noopener">🖥️ 在线体验</a>
+      <a class="btn ghost" href="https://github.com/Foool900/campus-online" target="_blank" rel="noopener">📦 GitHub 仓库</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="features">
+      <div class="card"><h3>🗺️ 校园地图</h3><p>可视化校园地图为入口，按地点组织信息与频道。</p></div>
+      <div class="card"><h3>💬 实时聊天</h3><p>区域 / 世界 / 活动 / 任务多场景实时消息，统一消息模型。</p></div>
+      <div class="card"><h3>🎯 任务协作</h3><p>公开悬赏接取与私密备忘，状态机 + 细粒度权限。</p></div>
+      <div class="card"><h3>💰 双账户经济</h3><p>经验 + 金币双账户，流水账本幂等、可审计。</p></div>
+      <div class="card"><h3>🏪 虚拟市场</h3><p>挂单交易、奖池抽奖、手续费回流公共奖池。</p></div>
+      <div class="card"><h3>👾 像素角色</h3><p>数据驱动像素装扮，JSON 网格 + Canvas 合成。</p></div>
+    </div>
+
+    <h2>界面预览</h2>
+    <figure><img src="assets/map.png" alt="校园大地图"><figcaption>校园大地图</figcaption></figure>
+    <figure><img src="assets/chat.png" alt="区域实时聊天"><figcaption>区域实时聊天</figcaption></figure>
+    <figure><img src="assets/tasks.png" alt="任务中心"><figcaption>任务中心</figcaption></figure>
+    <figure><img src="assets/leaderboard.png" alt="排行榜"><figcaption>排行榜</figcaption></figure>
+    <figure><img src="assets/market.png" alt="虚拟市场"><figcaption>虚拟市场</figcaption></figure>
+    <figure><img src="assets/character.png" alt="虚拟角色形象页"><figcaption>虚拟角色形象页</figcaption></figure>
+  </main>
+
+  <footer>
+    <p>Campus Online · React + Express + Socket.IO + SQLite · 在线体验 <a href="http://218.244.151.114/" target="_blank" rel="noopener">218.244.151.114</a></p>
+  </footer>
+</body>
+</html>
