@@ -8,6 +8,7 @@ const {
   claimStory,
   checkinNode,
   getStoryTimeline,
+  getStoryDetail,
   importStories,
   importStoryPools,
   drawStory,
@@ -279,4 +280,184 @@ test('剧情成就指标：stories_completed / story_checkins 正确计数', () 
   checkinNode(u, sid, nodes[1].id, { proof: { text: 'x' } });
   assert.equal(metricValue(u, 'story_checkins'), 2);
   assert.equal(metricValue(u, 'stories_completed'), 1);
+});
+
+// ============ 分支互动扩展（《河大的一天》）============
+
+test('剧情扩展：导入分支互动字段（endings/campusVariants/items/popup/对象 choices/optionalProof）', () => {
+  const admin = makeUser('admin');
+  const r = importStories(admin, {
+    code: 's-branch',
+    title: '分支测试',
+    obtainMode: 'claim',
+    availability: 'permanent',
+    endings: [
+      { mood: '宁静', code: 'qinxue', title: '勤学', text: '灯火长明' },
+      { mood: '热闹', code: 'yanhuo', title: '烟火', text: '西门夜色' },
+    ],
+    nodes: [
+      {
+        seq: 1, title: '序章', checkinType: 'text', optionalProof: false,
+        choices: [{ value: '明伦', label: '明伦校区', var: 'campus' }, { value: '金明', label: '金明校区', var: 'campus' }],
+        items: [{ name: '钥匙牌', icon: '🔑', rarity: 'common' }],
+        campusVariants: { 明伦: '老校区', 金明: '新校区' },
+        popup: { title: '冷知识', body: '大礼堂 1934' },
+      },
+    ],
+  });
+  assert.equal(r.error, undefined);
+  const sid = storyIdByCode('s-branch');
+  const st = db.prepare("SELECT * FROM stories WHERE code='s-branch'").get();
+  assert.equal(JSON.parse(st.endings_json)[0].code, 'qinxue');
+  const n = db.prepare('SELECT * FROM story_nodes WHERE story_id=?').get(sid);
+  assert.deepEqual(JSON.parse(n.choices_json)[0], { value: '明伦', label: '明伦校区', var: 'campus' });
+  assert.equal(JSON.parse(n.items_json)[0].name, '钥匙牌');
+  assert.deepEqual(JSON.parse(n.campus_variants_json), { 明伦: '老校区', 金明: '新校区' });
+  assert.equal(JSON.parse(n.popup_json).title, '冷知识');
+  assert.equal(n.optional_proof, 0);
+});
+
+test('剧情扩展：对象选择打卡累加 mood/energy，var 设校区', () => {
+  const admin = makeUser('admin');
+  const u = makeUser('student');
+  importStories(admin, {
+    code: 's-state', title: '状态', obtainMode: 'claim', availability: 'permanent',
+    nodes: [
+      { seq: 1, title: '序章', checkinType: 'none', choices: [{ value: '金明', label: '金明校区', var: 'campus' }] },
+      { seq: 2, title: '早餐', checkinType: 'none', choices: [{ value: '咖啡', label: '咖啡', moods: { 自在: 1 }, energy: 8 }] },
+    ],
+  });
+  const sid = storyIdByCode('s-state');
+  claimStory(u, sid);
+  const nodes = db.prepare('SELECT * FROM story_nodes WHERE story_id=? ORDER BY seq ASC').all(sid);
+  checkinNode(u, sid, nodes[0].id, { choice: '金明' });
+  let st = JSON.parse(db.prepare('SELECT state_json FROM player_stories WHERE user_id=? AND story_id=?').get(u, sid).state_json);
+  assert.equal(st.campus, '金明');
+  checkinNode(u, sid, nodes[1].id, { choice: '咖啡' });
+  st = JSON.parse(db.prepare('SELECT state_json FROM player_stories WHERE user_id=? AND story_id=?').get(u, sid).state_json);
+  assert.equal(st.campus, '金明');
+  assert.equal(st.mood['自在'], 1);
+  assert.equal(st.energy, 8);
+});
+
+test('剧情扩展：逐节点掉落（choice 分支 + proofText 额外 + readPopup 隐藏 + 无条件必掉）', () => {
+  const admin = makeUser('admin');
+  const u = makeUser('student');
+  importStories(admin, {
+    code: 's-drops', title: '掉落', obtainMode: 'claim', availability: 'permanent',
+    nodes: [
+      { seq: 1, title: '序章', checkinType: 'none', choices: [{ value: '明伦', label: '明伦', var: 'campus' }], items: [{ name: '钥匙', icon: '🔑', rarity: 'common' }] },
+      {
+        seq: 2, title: '早餐', checkinType: 'text', optionalProof: true,
+        choices: [{ value: '咖啡', label: '咖啡', moods: { 自在: 1 } }],
+        items: [
+          { name: '咖啡', icon: '☕', rarity: 'common', when: { choice: '咖啡' } },
+          { name: '便签', icon: '📝', rarity: 'rare', slot: 'extra', when: { proofText: true } },
+        ],
+      },
+      { seq: 3, title: '课堂', checkinType: 'none', popup: { title: 'x', body: 'y' }, items: [{ name: '明信片', icon: '💌', rarity: 'legendary', slot: 'extra', when: { readPopup: true } }] },
+    ],
+  });
+  const sid = storyIdByCode('s-drops');
+  claimStory(u, sid);
+  const nodes = db.prepare('SELECT * FROM story_nodes WHERE story_id=? ORDER BY seq ASC').all(sid);
+  checkinNode(u, sid, nodes[0].id, { choice: '明伦' });
+  assert.ok(db.prepare("SELECT * FROM inventory_items WHERE owner_id=? AND name='钥匙'").get(u));
+  checkinNode(u, sid, nodes[1].id, { choice: '咖啡', proof: { text: '吃了灌饼' } });
+  assert.ok(db.prepare("SELECT * FROM inventory_items WHERE owner_id=? AND name='咖啡'").get(u));
+  assert.ok(db.prepare("SELECT * FROM inventory_items WHERE owner_id=? AND name='便签'").get(u));
+  checkinNode(u, sid, nodes[2].id, { flags: { readPopup: true } });
+  assert.ok(db.prepare("SELECT * FROM inventory_items WHERE owner_id=? AND name='明信片'").get(u));
+});
+
+test('剧情扩展：optional_proof 允许空凭证，必做仍校验', () => {
+  const admin = makeUser('admin');
+  const u = makeUser('student');
+  importStories(admin, {
+    code: 's-optional', title: '可选', obtainMode: 'claim', availability: 'permanent',
+    nodes: [
+      { seq: 1, title: '必做', checkinType: 'text' },
+      { seq: 2, title: '可选', checkinType: 'text', optionalProof: true },
+    ],
+  });
+  const sid = storyIdByCode('s-optional');
+  claimStory(u, sid);
+  const nodes = db.prepare('SELECT * FROM story_nodes WHERE story_id=? ORDER BY seq ASC').all(sid);
+  assert.equal(checkinNode(u, sid, nodes[0].id, {}).code, 'STORY_PROOF_REQUIRED');
+  assert.equal(checkinNode(u, sid, nodes[0].id, { proof: { text: 'x' } }).error, undefined);
+  assert.equal(checkinNode(u, sid, nodes[1].id, {}).error, undefined);
+});
+
+test('剧情扩展：打满整章按主导 mood 结算结局，发纪念册与「镜头里的河大」', () => {
+  const admin = makeUser('admin');
+  const u = makeUser('student');
+  importStories(admin, {
+    code: 's-ending', title: '结局', obtainMode: 'claim', availability: 'permanent',
+    rewards: { exp: 5, coin: 5, items: [{ name: '纪念册', icon: '📔', rarity: 'legendary' }] },
+    endings: [
+      { mood: '宁静', code: 'qinxue', title: '勤学', text: '灯火' },
+      { mood: '热闹', code: 'yanhuo', title: '烟火', text: '夜色' },
+      { mood: '自在', code: 'zizai', title: '自在', text: '晚风' },
+    ],
+    nodes: [
+      { seq: 1, title: '序章', checkinType: 'none', choices: [{ value: '金明', label: '金明', var: 'campus' }] },
+      { seq: 2, title: '夜', checkinType: 'none', choices: [{ value: '夜市', label: '夜市', moods: { 热闹: 2 } }] },
+      { seq: 3, title: '图', checkinType: 'photo', optionalProof: true, choices: [{ value: 'a', label: 'a', moods: { 宁静: 1 } }] },
+    ],
+  });
+  const sid = storyIdByCode('s-ending');
+  claimStory(u, sid);
+  const nodes = db.prepare('SELECT * FROM story_nodes WHERE story_id=? ORDER BY seq ASC').all(sid);
+  checkinNode(u, sid, nodes[0].id, { choice: '金明' });
+  checkinNode(u, sid, nodes[1].id, { choice: '夜市' });
+  const c3 = checkinNode(u, sid, nodes[2].id, { choice: 'a', proof: { imageUrl: '/uploads/x.png' } });
+  assert.equal(c3.completed, true);
+  assert.equal(c3.ending.code, 'yanhuo'); // 热闹 2 > 宁静 1
+  assert.equal(db.prepare('SELECT ending_code FROM player_stories WHERE user_id=? AND story_id=?').get(u, sid).ending_code, 'yanhuo');
+  assert.ok(db.prepare("SELECT * FROM inventory_items WHERE owner_id=? AND name='纪念册'").get(u));
+  assert.ok(db.prepare("SELECT * FROM inventory_items WHERE owner_id=? AND name='镜头里的河大'").get(u)); // 唯一 photo 节点传了图
+  const detail = getStoryDetail(u, sid);
+  assert.equal(detail.ending.code, 'yanhuo');
+  assert.ok(detail.backpack.length >= 2); // 纪念册 + 镜头里的河大
+});
+
+test('剧情扩展：mood 并列时按最近一次增量决胜', () => {
+  const admin = makeUser('admin');
+  const u = makeUser('student');
+  importStories(admin, {
+    code: 's-tie', title: '并列', obtainMode: 'claim', availability: 'permanent',
+    endings: [
+      { mood: '宁静', code: 'qinxue', title: '勤学', text: '' },
+      { mood: '自在', code: 'zizai', title: '自在', text: '' },
+    ],
+    nodes: [
+      { seq: 1, title: 'a', checkinType: 'none', choices: [{ value: 'x', label: 'x', moods: { 宁静: 1 } }] },
+      { seq: 2, title: 'b', checkinType: 'none', choices: [{ value: 'y', label: 'y', moods: { 自在: 1 } }] },
+    ],
+  });
+  const sid = storyIdByCode('s-tie');
+  claimStory(u, sid);
+  const nodes = db.prepare('SELECT * FROM story_nodes WHERE story_id=? ORDER BY seq ASC').all(sid);
+  checkinNode(u, sid, nodes[0].id, { choice: 'x' });
+  checkinNode(u, sid, nodes[1].id, { choice: 'y' }); // 宁静=1 自在=1 并列，最近一次是自在
+  assert.equal(db.prepare('SELECT ending_code FROM player_stories WHERE user_id=? AND story_id=?').get(u, sid).ending_code, 'zizai');
+});
+
+test('剧情扩展：字符串数组 choices 回归（旧数据不受影响）', () => {
+  const admin = makeUser('admin');
+  const u = makeUser('student');
+  importStories(admin, {
+    code: 's-legacy', title: '旧选项', obtainMode: 'claim', availability: 'permanent',
+    nodes: [
+      { seq: 1, title: 'n1', checkinType: 'none', choices: ['图书馆', '操场'] },
+      { seq: 2, title: 'n2', checkinType: 'none' },
+    ],
+  });
+  const sid = storyIdByCode('s-legacy');
+  claimStory(u, sid);
+  const nodes = db.prepare('SELECT * FROM story_nodes WHERE story_id=? ORDER BY seq ASC').all(sid);
+  assert.equal(checkinNode(u, sid, nodes[0].id, { choice: '不存在' }).code, 'STORY_INVALID_CHOICE');
+  const c = checkinNode(u, sid, nodes[0].id, { choice: '图书馆' });
+  assert.equal(c.error, undefined);
+  assert.equal(db.prepare('SELECT choice FROM player_story_checkins WHERE user_id=? AND node_id=?').get(u, nodes[0].id).choice, '图书馆');
 });

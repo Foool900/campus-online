@@ -19,12 +19,17 @@ export default function BotPage() {
   const [cfgModel, setCfgModel] = useState('');
   const [cfgKey, setCfgKey] = useState('');
   const [cfgMode, setCfgMode] = useState('local');
+  const [affinity, setAffinity] = useState(null);
+  const [quiz, setQuiz] = useState(null);
+  const [showQuiz, setShowQuiz] = useState(false);
   const listRef = useRef(null);
   const idSeq = useRef(0);
 
   useEffect(() => {
     api.botStatus().then(setStatus).catch(() => {});
     api.aiConfig().then((c) => { setAiConfig(c); setCfgMode(c.mode || 'local'); setCfgBaseUrl(c.baseUrl || ''); setCfgModel(c.model || ''); }).catch(() => {});
+    api.botAffinity().then(setAffinity).catch(() => {});
+    api.botQuiz().then(setQuiz).catch(() => {});
     api
       .botHistory()
       .then((rows) => {
@@ -54,6 +59,7 @@ export default function BotPage() {
     try {
       const r = await api.botAsk({ question: q, web: webMode });
       if (typeof r.ollamaUp === 'boolean') setStatus((s) => ({ ...(s || {}), ollamaUp: r.ollamaUp }));
+      if (r.affinity) setAffinity(r.affinity);
       setMessages((m) => [
         ...m,
         { id: idSeq.current++, role: 'bot', text: r.answer, sources: r.sources || [], degraded: r.degraded },
@@ -104,6 +110,16 @@ export default function BotPage() {
     }
   }
 
+  async function submitQuiz(idx) {
+    setError('');
+    try {
+      const r = await api.botQuizAnswer({ answer: idx });
+      setQuiz((q) => ({ ...q, answered: true, correct: r.correct, explain: r.explain, reward: r.reward }));
+    } catch (err) {
+      setError(err.message || '作答失败');
+    }
+  }
+
   const offline = status && status.ollamaUp === false;
 
   return (
@@ -116,6 +132,10 @@ export default function BotPage() {
             {offline ? <span className="bot-offline">● 本地模型离线</span> : <span className="bot-online">● 知识库在线</span>}
             {status.chunks > 0 && <span>· {status.chunks} 条资料</span>}
             {aiConfig && (aiConfig.mode === 'cloud' && aiConfig.hasKey ? <span>· 模型：{aiConfig.model}</span> : <span>· 本地 Ollama</span>)}
+            {affinity && <span>· 💖 {affinity.label} {affinity.nextLevelAt ? `${affinity.affinity}/${affinity.nextLevelAt}` : affinity.affinity}</span>}
+            <button type="button" className="hud-btn bot-model-btn" onClick={() => { setShowQuiz((v) => !v); if (!quiz) api.botQuiz().then(setQuiz).catch(() => {}); }}>
+              🎯 每日一题
+            </button>
             <button type="button" className="hud-btn bot-model-btn" onClick={() => setShowModel((v) => !v)}>
               ⚙️ 模型
             </button>
@@ -158,6 +178,27 @@ export default function BotPage() {
             <button type="button" className="hud-btn" onClick={saveAiConfig}>保存</button>
             {aiConfig?.hasKey && <button type="button" className="hud-btn warn" onClick={clearAiConfig}>清除配置</button>}
           </div>
+        </div>
+      )}
+
+      {showQuiz && quiz && (
+        <div className="bot-model-panel">
+          <div className="bot-quiz-q">
+            🎯 {quiz.question} <span className="bot-quiz-hint">（答对 +{quiz.reward.exp} 经验 +{quiz.reward.coin} 金币）</span>
+          </div>
+          <div className="bot-quiz-opts">
+            {quiz.options.map((opt, i) => (
+              <button key={i} type="button" className="hud-btn bot-quiz-opt" disabled={quiz.answered} onClick={() => submitQuiz(i)}>
+                {String.fromCharCode(65 + i)}. {opt}
+              </button>
+            ))}
+          </div>
+          {quiz.answered && (
+            <div className={'bot-quiz-result ' + (quiz.correct ? 'ok' : 'no')}>
+              {quiz.correct ? '✅ 答对啦！' : '❌ 答错了'} {quiz.explain}
+              {quiz.correct && <span className="bot-quiz-reward"> +{quiz.reward?.exp || 0} 经验 +{quiz.reward?.coin || 0} 金币</span>}
+            </div>
+          )}
         </div>
       )}
 

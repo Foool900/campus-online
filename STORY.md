@@ -46,6 +46,25 @@
 - `checkin_type`：`none` 纯打卡 | `text` 写文字 | `photo` 传图 | `link` 附链接；凭证复用任务 `proof = { text, imageUrl, link }`。
 - `choices_json`：伪分支选择项（只记录、不影响走向），选中值存 `player_story_checkins.choice`，进时间线故事书。
 
+## 分支互动扩展（视觉小说 / 多结局，如《河大的一天》）
+
+在原「线性打卡」之上加了三块，全部向后兼容（旧剧情不受影响）：
+
+- **选择项对象形式**：`choices_json` 除字符串数组外，还支持对象数组
+  `{ value, label, moods:{宁静,热闹,自在}, energy, var }`。玩家打卡时选择的效果累加进
+  `player_stories.state_json`（`{ campus, mood:{…}, energy, lastMood }`）；`var:'campus'` 把值写入 `campus`。
+- **结局**：`stories.endings_json` 存 `[{ mood, code, title, text }]`；打满整章按主导 mood 结算
+  `player_stories.ending_code`（并列取最近一次累加的心情）。
+- **逐节点掉落**：`story_nodes.items_json` 存 `[{ name, icon, rarity, description, slot, when }]`，
+  `when` 条件（`choice` / `campus` / `proofText` / `proofPhoto` / `readPopup`）全满足才掉；
+  物品走 `grantInventoryItem`（`source='story'`，`source_ref_id=进度实例 id`），逐节点幂等发放入背包。
+- **校区分支文案**：`story_nodes.campus_variants_json` 存 `{ "明伦":"…", "金明":"…" }`，前端按 `state.campus` 选正文。
+- **可选凭证**：`story_nodes.optional_proof` 为 1 时该节点文字/图片可留空跳过。
+- **科普弹窗**：`story_nodes.popup_json` 存 `{ title, body }`；打卡 `flags.readPopup` 记录已读，可解锁隐藏掉落。
+
+完成时额外发放：奖励 `rewards.items`（含《我的河大一日纪念册》这类合成件）+ 隐藏件「镜头里的河大」
+（所有 photo 节点都传图时）。`GET /api/stories/:id` 在完成态返回 `ending` 与 `backpack`（本次收集的物品）。
+
 ## 完成奖励
 
 打满整章触发一次 `in_progress → completed` 状态迁移，在**同一事务**内发三样奖励，幂等靠「单次状态迁移」+ exp/coin 幂等键（`story:run:{playerStoriesId}:complete:*`）双保险：

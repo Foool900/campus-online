@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { db, nowIso } from '../db.js';
 import { requireRole } from '../auth.js';
 import { answer, rebuildIndex, getStatus } from '../kb.js';
+import { touchAffinity, getAffinity } from '../affinity.js';
+import { quizStatus, answerQuiz } from '../quiz.js';
 
 const router = Router();
 
@@ -39,7 +41,9 @@ router.post('/ask', async (req, res) => {
       nowIso()
     );
   }
-  res.json(result);
+  // 真实问答（非降级）累积亲密度
+  const affinity = result.degraded ? null : touchAffinity(req.user.id);
+  res.json({ ...result, affinity });
 });
 
 // GET /api/bot/history —— 最近 50 条
@@ -103,6 +107,30 @@ router.put('/ai-config', (req, res) => {
 router.delete('/ai-config', (req, res) => {
   db.prepare('DELETE FROM user_ai_configs WHERE user_id = ?').run(req.user.id);
   res.json({ ok: true });
+});
+
+// GET /api/bot/affinity —— 当前亲密度
+router.get('/affinity', (req, res) => {
+  res.json(getAffinity(req.user.id));
+});
+
+// GET /api/bot/quiz —— 今日校园问答
+router.get('/quiz', (req, res) => {
+  res.json(quizStatus(req.user.id));
+});
+
+// POST /api/bot/quiz/answer —— 作答今日校园问答
+router.post('/quiz/answer', (req, res) => {
+  try {
+    const r = answerQuiz(req.user.id, req.body?.answer);
+    if (r.error) return res.status(r.status || 400).json({ error: r.error });
+    res.json(r);
+  } catch (e) {
+    if (e && Number.isInteger(e.status) && e.status >= 400 && e.status < 500) {
+      return res.status(e.status).json({ error: e.message, ...(e.code ? { code: e.code } : {}) });
+    }
+    throw e;
+  }
 });
 
 export default router;

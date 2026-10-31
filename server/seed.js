@@ -379,6 +379,156 @@ const DEMO_STORIES = [
       { seq: 2, title: '给母校写一句祝福', description: '写一句祝福语', checkinType: 'text' },
     ],
   },
+  {
+    code: 'henu-one-day',
+    title: '河大的一天',
+    subtitle: '用选择与照片，把你自己的一天嵌进河大',
+    cover: '🏫',
+    category: '日常',
+    obtainMode: 'claim',
+    availability: 'permanent',
+    sequential: true,
+    rewards: {
+      exp: 60,
+      coin: 120,
+      items: [{ name: '《我的河大一日纪念册》', icon: '📔', rarity: 'legendary', description: '把今天的票根、落叶、便签、拍立得按时间顺序贴进册页，这是属于你的河大一日。' }],
+    },
+    endings: [
+      { mood: '宁静', code: 'qinxue', title: '勤学结局 · 灯火长明', text: '你合上书本时，图书馆还有一半灯亮着。河大的夜晚安静又热闹，而你是其中一束光。' },
+      { mood: '热闹', code: 'yanhuo', title: '烟火结局 · 西门夜色', text: '烧饼夹鸡腿的热气模糊了眼镜，这条小街装着无数河大人的深夜快乐。' },
+      { mood: '自在', code: 'zizai', title: '自在结局 · 湖畔晚风', text: '跑完最后一圈，风从湖面吹过来，你觉得这一天值了。' },
+    ],
+    nodes: [
+      {
+        seq: 1, title: '序章 · 07:00 宿舍醒来', checkinType: 'text',
+        description: '7:00，闹钟第三次响起。你摸过手机，宿舍里还静悄悄的，有人床位已经空了——那是真·早八战士。窗外的树影晃在墙上，新的一天开始了。',
+        tips: '先给今天的自己起个称呼，并告诉我：你在哪个学院？（示例：我是软件学院的小辰）',
+        choices: [
+          { value: '明伦', label: '明伦校区（老校区）', var: 'campus' },
+          { value: '金明', label: '金明校区（新校区）', var: 'campus' },
+        ],
+        items: [{ name: '宿舍钥匙牌', icon: '🔑', rarity: 'common', description: '一天的起点，也是晚归时最安心的一声脆响。' }],
+      },
+      {
+        seq: 2, title: '07:30 早餐，吃什么', checkinType: 'text', optionalProof: true,
+        description: '踩着铃声往食堂走。胡辣汤的热气、灌饼的油香，都是河大早晨的背景音。',
+        tips: '你今天早餐实际吃了什么？（示例：一个鸡蛋灌饼 + 一杯豆浆。）',
+        campusVariants: {
+          明伦: '踩着铃声往食堂走。学五食堂的胡辣汤冒着热气，中心食堂的窗口前已经排起小队——河大饭点的队伍，是学生们心照不宣的默契。',
+          金明: '教苑、南苑、北苑几大餐厅一字排开，你端着餐盘在窗口间穿梭，性价比拉满的早餐任你挑。',
+        },
+        choices: [
+          { value: '食堂胡辣汤', label: '学五/教苑食堂，来一碗热胡辣汤 + 包子', moods: { 宁静: 1 }, energy: 10 },
+          { value: '边走边买', label: '边走边买，赶在铃声前冲去教学楼', moods: { 热闹: 1 }, energy: 5 },
+          { value: '宿舍咖啡', label: '回宿舍泡杯咖啡，从容出门', moods: { 自在: 1 }, energy: 8 },
+        ],
+        items: [
+          { name: '胡辣汤蒸汽书签', icon: '🍜', rarity: 'common', description: '一碗热汤把清晨叫醒。', when: { choice: '食堂胡辣汤' } },
+          { name: '鸡蛋灌饼油纸', icon: '🥞', rarity: 'common', description: '赶课的人，手里都攥着一张油纸。', when: { choice: '边走边买' } },
+          { name: '半杯冷掉的咖啡', icon: '☕', rarity: 'common', description: '从容需要练习，先从接受半杯凉咖啡开始。', when: { choice: '宿舍咖啡' } },
+        ],
+      },
+      {
+        seq: 3, title: '08:00 早八路上', checkinType: 'photo', optionalProof: true,
+        description: '你穿过晨光，往教学楼走去，顺路瞥一眼河大最日常的一角。',
+        tips: '📷 上传一张「你早八路上看到的河大一角」：教学楼、树影、食堂门口的队伍，或你走出宿舍拍的第一张照片。（可跳过）',
+        campusVariants: {
+          明伦: '你穿过红砖绿树，往教学楼走。路边就是六号楼（博文楼）——1919 年建成的中西合璧老建筑，1925 年李大钊曾登上三楼，在这里讲过《大英帝国主义侵略中国史》。七号楼（博雅楼）的红墙在晨光里很安静，范文澜等先生当年曾在此耕耘。',
+          金明: '你沿着伯襄路走向教学楼，路旁先闻湖里的黑天鹅（河大「校宠」）正慢悠悠划水，远处 4.7 万平方米的图书大楼是整个校区的标志性建筑。',
+        },
+        choices: [
+          { value: '前排坐下', label: '赶紧找前排位置坐下', moods: { 宁静: 1 } },
+          { value: '边走边聊', label: '和顺路的同学边走边聊', moods: { 热闹: 1 } },
+        ],
+        items: [
+          { name: '六号楼红墙下的一片落叶', icon: '🍂', rarity: 'rare', description: '1919 年的墙根接住的叶子，叶脉里都是书声。', when: { campus: '明伦' } },
+          { name: '先闻湖的一根黑天鹅羽毛', icon: '🪶', rarity: 'rare', description: '校宠施舍的，别指望第二根。', when: { campus: '金明' } },
+          { name: '今日第一张拍立得', icon: '📸', rarity: 'common', description: '你早八路上的第一张照片，成了今天的物品。', slot: 'extra', when: { proofPhoto: true } },
+        ],
+      },
+      {
+        seq: 4, title: '10:00 课堂时刻', checkinType: 'text', optionalProof: true,
+        description: '课间十分钟。如果在明伦，你正坐在六号楼或七号楼这样的老建筑里上课，桌椅间仿佛还留着近百年的书声；如果在金明，现代的组团式教学楼掩映在大片绿化带里。老师刚讲完一个章节，黑板上还留着推导。',
+        tips: '这节课你最想向老师提的一个问题是什么？（示例：这个算法在机器人上怎么落地？）',
+        popup: { title: '冷知识 · 明伦大礼堂', body: '明伦大礼堂 1934 年落成，建的时候全校师生只有五百余人，礼堂却能容纳三千人，钢梁屋架全部从德国进口；1937 年人民音乐家冼星海曾在这里活动。它是河大当之无愧的地标。' },
+        items: [
+          { name: '一页课堂笔记', icon: '📄', rarity: 'common', description: '黑板会擦，纸页替你记住。' },
+          { name: '提问便签', icon: '📝', rarity: 'rare', description: '你的问题折成方块，收进包里。', slot: 'extra', when: { proofText: true } },
+          { name: '1912 年的明信片', icon: '💌', rarity: 'legendary', description: '河大前身是 1912 年的河南留学欧美预备学校，这张明信片替你寄给百年前的校门。', slot: 'extra', when: { readPopup: true } },
+        ],
+      },
+      {
+        seq: 5, title: '12:00 午餐时分 · 地标打卡', checkinType: 'photo', optionalProof: true,
+        description: '吃完饭，你往校园的地标处溜达过去，那里是河大最出片的地方。',
+        tips: '📷 上传一张「你心中河大的标志性建筑/地点」：明伦可选大礼堂、六号楼、博雅楼、十二斋；金明可选图书大楼、先闻湖黑天鹅、志义体育场。（可跳过）',
+        campusVariants: {
+          明伦: '吃完饭，你溜达到中轴线的大礼堂广场。宫殿式的红墙灰瓦恢弘凝重，1934 年建成时曾入选「亚洲十大建筑」。午后阳光落在台阶上，有人在这里背书，有人在这里拍照。',
+          金明: '你来到图书大楼前的广场，一池碧水、天鹅游弋，海棠与绿意围着凉亭，是金明最出片的地方。',
+        },
+        choices: [
+          { value: '回寝午睡', label: '回宿舍午睡半小时', moods: { 宁静: 1 }, energy: 20 },
+          { value: '随便走走', label: '不回寝，在校园里随便走走', moods: { 自在: 1 } },
+        ],
+        items: [
+          { name: '大礼堂台阶的光斑', icon: '🌞', rarity: 'rare', description: '1934 年的台阶上，今天的阳光也有座。', when: { campus: '明伦' } },
+          { name: '图书大楼预约成功二维码', icon: '🎫', rarity: 'rare', description: '4.7 万㎡里，属于你的那个坐标。', when: { campus: '金明' } },
+          { name: '地标拍立得', icon: '📷', rarity: 'epic', description: '你选的河大标志，定格成一张相纸。', slot: 'extra', when: { proofPhoto: true } },
+        ],
+      },
+      {
+        seq: 6, title: '14:00 下午的选择', checkinType: 'text', optionalProof: true,
+        description: '下午的时间攥在你自己手里。河大从不缺安静专注的角落：图书馆可以线上预约座位，不用再靠书占座；空置教室全天开放，适合小组讨论；社团招新的摊位也许正摆在路边。',
+        tips: '你下午计划完成的一件小事是什么？（示例：把高数错题整理完。）',
+        choices: [
+          { value: '图书馆自习', label: '图书馆/自习室线：线上约座，刷题、查文献', moods: { 宁静: 2 } },
+          { value: '社团招新', label: '社团/社交线：去招新摊位转一圈，报一个感兴趣的社团', moods: { 热闹: 2 } },
+          { value: '实验室项目', label: '实验室/项目线：去实验室或科创小组，捣鼓自己的项目', moods: { 宁静: 1, 自在: 1 } },
+        ],
+        items: [
+          { name: '图书馆预约座位号', icon: '🔢', rarity: 'common', description: '一串数字，也是今天的固定坐标。', when: { choice: '图书馆自习' } },
+          { name: '社团招新报名表', icon: '📋', rarity: 'common', description: '你的名字进了一个新集体的名单。', when: { choice: '社团招新' } },
+          { name: '一颗焊好的小元件', icon: '🔩', rarity: 'common', description: '有点歪，但通电了。', when: { choice: '实验室项目' } },
+        ],
+      },
+      {
+        seq: 7, title: '17:30 黄昏湖畔', checkinType: 'photo', optionalProof: true,
+        description: '天色渐晚，你走到湖边，看夕阳把一天的疲惫泡软。',
+        tips: '📷 上传一张「你今天拍到的黄昏/天空/湖面」。（可跳过）',
+        campusVariants: {
+          明伦: '你走到铁塔湖边。十三层的褐色琉璃砖塔（铁塔）八棱挺拔，每层翘角挂着铜铃，风一过叮当作响。夕阳把铁塔的影子拉在湖面上，波光像撒了金——这是河大人公认的网红打卡时刻。',
+          金明: '你来到先闻湖或访秋湖边，柳色低垂，黑天鹅掠过水面，伯襄路上落叶斑驳，晚霞把楼宇染成暖红。',
+        },
+        choices: [
+          { value: '再坐一会儿', label: '安静地再坐一会儿', moods: { 宁静: 1 } },
+          { value: '顺路逛逛', label: '顺路去逛一逛', moods: { 热闹: 1 } },
+        ],
+        items: [
+          { name: '铁塔铜铃的一记余响', icon: '🔔', rarity: 'rare', description: '十三层琉璃砖塔的铜铃替你响了一声。', when: { campus: '明伦' } },
+          { name: '先闻湖晚霞色块', icon: '🌇', rarity: 'rare', description: '用眼睛调出来的一块暖橙。', when: { campus: '金明' } },
+          { name: '黄昏拍立得', icon: '🌅', rarity: 'epic', description: '一天里光线最温柔的九十秒。', slot: 'extra', when: { proofPhoto: true } },
+        ],
+      },
+      {
+        seq: 8, title: '19:00 河大的夜晚', checkinType: 'none',
+        description: '19:00，自习室的灯亮得整整齐齐，图书馆走廊里有人戴着耳机背单词；操场上有人夜跑；而学校西门外的夜市，油锅刚热起来。',
+        choices: [
+          { value: '夜读自习', label: '勤学线：回到自习室/图书馆夜读', moods: { 宁静: 2 } },
+          { value: '西门夜市', label: '烟火线：出西门逛夜市——烧饼夹鸡腿、牛肉火烧、炒凉粉，四方坑夜市的炒海盘冒着热气', moods: { 热闹: 2 }, energy: 15 },
+          { value: '夜跑三圈', label: '自在线：去志义体育场（金明）/东操场（明伦）夜跑三圈', moods: { 自在: 2 }, energy: 10 },
+        ],
+        items: [
+          { name: '自习室台灯下的便签', icon: '🏷️', rarity: 'common', description: '写着明日待办，也写着此刻的专注。', when: { choice: '夜读自习' } },
+          { name: '烧饼夹鸡腿的油纸袋', icon: '🍗', rarity: 'common', description: '油纸渗着油光，是西门夜市给你的盖章。', when: { choice: '西门夜市' } },
+          { name: '夜跑擦汗的腕带', icon: '🧵', rarity: 'common', description: '三圈下来，它记住了你的心率。', when: { choice: '夜跑三圈' } },
+        ],
+      },
+      {
+        seq: 9, title: '21:30 我的河大一日', checkinType: 'text',
+        description: '回到宿舍，台灯亮起。今天你走过的路、拍下的照片、写下的句子，都在这里——系统会为你拼出《我的河大一日》纪念页。',
+        tips: '今天最让你难忘的一个河大瞬间是什么？一句话就好。（示例：黄昏时铁塔湖的铜铃响了一声。）',
+      },
+    ],
+  },
 ];
 
 // 幂等：确保演示剧情存在（按 code 判重，绝不覆盖已导入内容）
@@ -389,10 +539,13 @@ export function ensureStories() {
 
   const insStory = db.prepare(
     `INSERT INTO stories (code, title, subtitle, cover, category, obtain_mode, availability,
-       window_start_at, window_end_at, festival_code, sequential, timeboxed, rewards_json, sort_order, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'published', ?, ?)`
+       window_start_at, window_end_at, festival_code, sequential, timeboxed, rewards_json, endings_json, sort_order, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'published', ?, ?)`
   );
-  const insNode = db.prepare('INSERT INTO story_nodes (story_id, seq, title, description, checkin_type, tips, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const insNode = db.prepare(
+    `INSERT INTO story_nodes (story_id, seq, title, description, checkin_type, tips, choices_json, campus_variants_json, items_json, popup_json, optional_proof, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
 
   for (const s of DEMO_STORIES) {
     if (db.prepare('SELECT id FROM stories WHERE code = ?').get(s.code)) continue;
@@ -404,11 +557,25 @@ export function ensureStories() {
       s.sequential === false ? 0 : 1,
       s.timeboxed ? 1 : 0,
       JSON.stringify(s.rewards || { exp: 0, coin: 0, items: [] }),
+      s.endings && s.endings.length ? JSON.stringify(s.endings) : null,
       now, now
     );
     const storyId = Number(info.lastInsertRowid);
     for (const n of s.nodes) {
-      insNode.run(storyId, n.seq, n.title, n.description, n.checkinType || 'none', n.tips || '', now);
+      insNode.run(
+        storyId,
+        n.seq,
+        n.title,
+        n.description || '',
+        n.checkinType || 'none',
+        n.tips || '',
+        n.choices && n.choices.length ? JSON.stringify(n.choices) : null,
+        n.campusVariants ? JSON.stringify(n.campusVariants) : null,
+        n.items && n.items.length ? JSON.stringify(n.items) : null,
+        n.popup ? JSON.stringify(n.popup) : null,
+        n.optionalProof ? 1 : 0,
+        now
+      );
     }
   }
 }

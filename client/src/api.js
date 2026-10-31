@@ -308,6 +308,9 @@ export const api = {
   aiConfig: () => request('/api/bot/ai-config'),
   saveAiConfig: (body) => request('/api/bot/ai-config', { method: 'PUT', body: JSON.stringify(body) }),
   clearAiConfig: () => request('/api/bot/ai-config', { method: 'DELETE' }),
+  botAffinity: () => request('/api/bot/affinity'),
+  botQuiz: () => request('/api/bot/quiz'),
+  botQuizAnswer: (body) => request('/api/bot/quiz/answer', { method: 'POST', body: JSON.stringify(body) }),
 };
 
 export default api;

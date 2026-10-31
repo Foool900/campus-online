@@ -23,6 +23,7 @@ const OBTAIN_MODES = ['claim', 'task', 'gacha'];
 const AVAILABILITIES = ['permanent', 'festival'];
 const CHECKIN_TYPES = ['none', 'text', 'photo', 'link'];
 const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+const MOODS = ['宁静', '热闹', '自在']; // 分支互动剧情的心情维度，结局按主导 mood 结算
 
 function parseJson(s, fallback = null) {
   if (s == null || s === '') return fallback;
@@ -75,6 +76,7 @@ function mapStory(row) {
     sequential: !!row.sequential,
     timeboxed: !!row.timeboxed,
     rewards: parseJson(row.rewards_json, { exp: 0, coin: 0, items: [] }),
+    endings: parseJson(row.endings_json, null),
     sortOrder: row.sort_order,
     status: row.status,
     createdAt: row.created_at,
@@ -93,6 +95,10 @@ function mapNode(row) {
     checkinType: row.checkin_type,
     tips: row.tips,
     choices: parseJson(row.choices_json, null),
+    campusVariants: parseJson(row.campus_variants_json, null),
+    items: parseJson(row.items_json, null),
+    popup: parseJson(row.popup_json, null),
+    optionalProof: !!row.optional_proof,
   };
 }
 
@@ -106,6 +112,8 @@ function mapRun(row) {
     obtainedVia: row.obtained_via,
     obtainedAt: row.obtained_at,
     completedAt: row.completed_at,
+    state: parseJson(row.state_json, { campus: null, mood: { 宁静: 0, 热闹: 0, 自在: 0 }, energy: 0 }),
+    endingCode: row.ending_code || null,
   };
 }
 
@@ -119,6 +127,75 @@ function inWindow(story, now = new Date()) {
   const iso = now.toISOString();
   if (story.window_start_at && iso < story.window_start_at) return false;
   if (story.window_end_at && iso > story.window_end_at) return false;
+  return true;
+}
+
+function emptyState() {
+  return { campus: null, mood: { 宁静: 0, 热闹: 0, 自在: 0 }, energy: 0 };
+}
+
+// 选项规范化：兼容「字符串数组」（旧）与「对象数组」（带 mood/energy/var 的分支）。
+// 返回 { values:[...], byValue:{ value: { value,label,moods,energy,var } } }。
+function normalizeChoices(choices) {
+  const values = [];
+  const byValue = {};
+  if (!Array.isArray(choices)) return { values, byValue };
+  for (const c of choices) {
+    if (typeof c === 'string' && c.trim()) {
+      values.push(c);
+      byValue[c] = { value: c, label: c, moods: {}, energy: 0, var: null };
+    } else if (c && typeof c === 'object' && c.value) {
+      const moods = {};
+      if (c.moods && typeof c.moods === 'object') {
+        for (const m of MOODS) if (Number.isFinite(Number(c.moods[m]))) moods[m] = Number(c.moods[m]);
+      }
+      values.push(c.value);
+      byValue[c.value] = {
+        value: c.value,
+        label: c.label || c.value,
+        moods,
+        energy: Number.isFinite(Number(c.energy)) ? Number(c.energy) : 0,
+        var: c.var || null,
+      };
+    }
+  }
+  return { values, byValue };
+}
+
+// 合并一个选择的效果到状态：var 设字符串变量、moods 累加、energy 累加
+function applyChoiceToState(state, entry) {
+  const s = { ...emptyState(), ...(state || {}), mood: { ...emptyState().mood, ...((state && state.mood) || {}) } };
+  if (entry.var) s.campus = entry.var === 'campus' ? entry.value : s.campus;
+  for (const m of MOODS) s.mood[m] = (s.mood[m] || 0) + (entry.moods[m] || 0);
+  s.energy = (s.energy || 0) + (entry.energy || 0);
+  // 记录「最近一次被累加的心情」，供结局并列时确定性决胜
+  const last = MOODS.filter((m) => (entry.moods[m] || 0) > 0).pop();
+  if (last) s.lastMood = last;
+  return s;
+}
+
+// 按主导 mood 选结局（并列时取最后一次被累加的心情，保证确定性）
+function resolveEnding(endings, state, lastMood) {
+  if (!Array.isArray(endings) || endings.length === 0) return null;
+  const mood = state?.mood || {};
+  const totals = MOODS.map((m) => ({ mood: m, n: Number(mood[m]) || 0 }));
+  let best = totals.reduce((a, b) => (b.n > a.n ? b : a), totals[0]);
+  // 并列：最近一次累加的心情胜出
+  const ties = totals.filter((t) => t.n === best.n);
+  if (ties.length > 1 && lastMood && ties.some((t) => t.mood === lastMood)) {
+    best = ties.find((t) => t.mood === lastMood);
+  }
+  return endings.find((e) => e.mood === best.mood) || null;
+}
+
+// 逐节点掉落条件评估：when 全空 = 必掉；否则全条件满足才掉
+function evalItemWhen(when, ctx) {
+  if (!when || typeof when !== 'object' || Object.keys(when).length === 0) return true;
+  if (when.choice != null && when.choice !== ctx.choice) return false;
+  if (when.campus != null && when.campus !== ctx.campus) return false;
+  if (when.proofText === true && !ctx.proofText) return false;
+  if (when.proofPhoto === true && !ctx.proofPhoto) return false;
+  if (when.readPopup === true && !ctx.readPopup) return false;
   return true;
 }
 
@@ -232,10 +309,23 @@ export function getStoryDetail(userId, storyId) {
     };
   });
 
+  const myRun = runRow ? mapRun(runRow) : null;
+  const endings = parseJson(story.endings_json, null);
+  const ending = myRun && myRun.status === 'completed' && myRun.endingCode
+    ? endings?.find((e) => e.code === myRun.endingCode) || null
+    : null;
+
+  // 完成态附带本次收集的背包（按获取顺序）
+  const backpack = myRun && myRun.status === 'completed'
+    ? db.prepare("SELECT id, name, icon, rarity, description, acquired_at FROM inventory_items WHERE owner_id = ? AND source = 'story' AND source_ref_id = ? AND status != 'sold' ORDER BY acquired_at ASC, id ASC").all(uid, myRun.id)
+    : null;
+
   return {
     story: mapStory(story),
     nodes: nodeViews,
-    myRun: runRow ? mapRun(runRow) : null,
+    myRun,
+    ending,
+    backpack,
     obtainable: runRow ? false : story.obtain_mode === 'claim' && inWindow(story),
   };
 }
@@ -249,6 +339,7 @@ export function checkinNode(userId, storyId, nodeId, payload = {}) {
   const nid = Number(nodeId);
   const proof = payload && typeof payload.proof === 'object' ? payload.proof : {};
   const choice = typeof payload.choice === 'string' ? payload.choice.trim() : null;
+  const flags = payload && typeof payload.flags === 'object' ? payload.flags : {};
 
   // 限时过期需独立提交：若放在下方事务内，抛错会回滚掉过期标记
   const story0 = getStory(sid);
@@ -284,27 +375,62 @@ export function checkinNode(userId, storyId, nodeId, payload = {}) {
       }
     }
 
-    // 凭证校验（按 checkin_type）
+    // 凭证校验（按 checkin_type；optional_proof 节点可留空跳过）
     const text = typeof proof.text === 'string' ? proof.text.trim() : '';
     const imageUrl = typeof proof.imageUrl === 'string' ? proof.imageUrl.trim() : '';
     const link = typeof proof.link === 'string' ? proof.link.trim() : '';
-    if (node.checkin_type === 'text' && !text) throw bizErr('STORY_PROOF_REQUIRED', '该节点需写一段文字打卡', 400);
-    if (node.checkin_type === 'photo' && !imageUrl) throw bizErr('STORY_PROOF_REQUIRED', '该节点需上传图片打卡', 400);
-    if (node.checkin_type === 'link' && !link) throw bizErr('STORY_PROOF_REQUIRED', '该节点需附链接打卡', 400);
+    const optional = !!node.optional_proof;
+    if (!optional) {
+      if (node.checkin_type === 'text' && !text) throw bizErr('STORY_PROOF_REQUIRED', '该节点需写一段文字打卡', 400);
+      if (node.checkin_type === 'photo' && !imageUrl) throw bizErr('STORY_PROOF_REQUIRED', '该节点需上传图片打卡', 400);
+      if (node.checkin_type === 'link' && !link) throw bizErr('STORY_PROOF_REQUIRED', '该节点需附链接打卡', 400);
+    }
     if (text && containsSensitiveWord(text)) throw bizErr('SENSITIVE_CONTENT', '内容包含违规词，请修改', 400);
 
-    // 伪分支选择项校验（只记录、不影响走向）
+    // 分支选择项校验（字符串/对象两态），并取该选择的变量效果
     const choices = parseJson(node.choices_json, null);
-    if (choice && Array.isArray(choices) && !choices.includes(choice)) {
-      throw bizErr('STORY_INVALID_CHOICE', '选择项无效', 400);
+    const norm = normalizeChoices(choices);
+    let choiceEntry = null;
+    if (choice) {
+      if (!norm.values.includes(choice)) throw bizErr('STORY_INVALID_CHOICE', '选择项无效', 400);
+      choiceEntry = norm.byValue[choice] || null;
     }
 
     const proofJson = JSON.stringify({ text, imageUrl, link });
+    const flagsJson = flags && Object.keys(flags).length ? JSON.stringify(flags) : null;
     const info = db
-      .prepare('INSERT OR IGNORE INTO player_story_checkins (user_id, story_id, node_id, proof_json, choice, checked_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(uid, sid, nid, proofJson, choice || null, nowIso());
+      .prepare('INSERT OR IGNORE INTO player_story_checkins (user_id, story_id, node_id, proof_json, choice, flags_json, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(uid, sid, nid, proofJson, choice || null, flagsJson, nowIso());
     if (info.changes === 0) {
       return { duplicate: true, completed: false };
+    }
+
+    // 变量状态合并：选择效果写入 player_stories.state_json
+    const state = parseJson(runRow.state_json, emptyState());
+    const nextState = choiceEntry ? applyChoiceToState(state, choiceEntry) : state;
+    db.prepare('UPDATE player_stories SET state_json = ? WHERE id = ?').run(JSON.stringify(nextState), runRow.id);
+
+    // 逐节点掉落物品（分支变体 + 额外件；幂等靠上面的 INSERT OR IGNORE 早退）
+    const nodeItems = parseJson(node.items_json, null);
+    const dropCtx = {
+      choice: choice || null,
+      campus: nextState.campus || null,
+      proofText: !!text,
+      proofPhoto: !!imageUrl,
+      readPopup: !!(flags && flags.readPopup),
+    };
+    const dropped = [];
+    for (const it of Array.isArray(nodeItems) ? nodeItems : []) {
+      if (!evalItemWhen(it.when, dropCtx)) continue;
+      grantInventoryItem(uid, {
+        name: it.name || '剧情纪念品',
+        icon: it.icon || '🎁',
+        description: it.description || '',
+        rarity: RARITIES.includes(it.rarity) ? it.rarity : 'common',
+        source: 'story',
+        sourceRefId: runRow.id,
+      });
+      dropped.push(it.name);
     }
 
     db.prepare('UPDATE player_story_meta SET checkin_count = checkin_count + 1 WHERE user_id = ?').run(uid);
@@ -312,11 +438,16 @@ export function checkinNode(userId, storyId, nodeId, payload = {}) {
     // 是否打满整章
     const total = db.prepare('SELECT COUNT(*) AS c FROM story_nodes WHERE story_id = ?').get(sid).c;
     const done = db.prepare('SELECT COUNT(*) AS c FROM player_story_checkins WHERE user_id = ? AND story_id = ?').get(uid, sid).c;
-    if (done < total) return { duplicate: false, completed: false };
+    if (done < total) return { duplicate: false, completed: false, dropped };
 
     // 完成：单次状态迁移 + 一次性发奖励（幂等键带 run id）
     const up = db.prepare("UPDATE player_stories SET status = 'completed', completed_at = ? WHERE id = ? AND status = 'in_progress'").run(nowIso(), runRow.id);
     if (up.changes === 0) return { duplicate: false, completed: true };
+
+    // 结局结算（按主导 mood）
+    const endings = parseJson(story.endings_json, null);
+    const ending = resolveEnding(endings, nextState, nextState.lastMood);
+    if (ending) db.prepare('UPDATE player_stories SET ending_code = ? WHERE id = ?').run(ending.code, runRow.id);
 
     const rewards = parseJson(story.rewards_json, { exp: 0, coin: 0, items: [] });
     if (Number(rewards.exp) > 0) {
@@ -335,9 +466,20 @@ export function checkinNode(userId, storyId, nodeId, payload = {}) {
         sourceRefId: runRow.id,
       });
     }
+    // 隐藏件「镜头里的河大」：所有 photo 节点都传了图（单周目即可解锁）
+    const photoNodes = db.prepare("SELECT id FROM story_nodes WHERE story_id = ? AND checkin_type = 'photo'").all(sid);
+    if (photoNodes.length > 0) {
+      const withPhoto = photoNodes.filter((p) => {
+        const c = db.prepare('SELECT proof_json FROM player_story_checkins WHERE user_id = ? AND node_id = ?').get(uid, p.id);
+        return c && parseJson(c.proof_json, {}).imageUrl;
+      }).length;
+      if (withPhoto === photoNodes.length) {
+        grantInventoryItem(uid, { name: '镜头里的河大', icon: '📸', description: '三张照片凑齐，解锁摄影师称号。', rarity: 'epic', source: 'story', sourceRefId: runRow.id });
+      }
+    }
     db.prepare('UPDATE player_story_meta SET completed_count = completed_count + 1 WHERE user_id = ?').run(uid);
 
-    return { duplicate: false, completed: true, rewards };
+    return { duplicate: false, completed: true, dropped, ending: ending ? { code: ending.code, title: ending.title, text: ending.text } : null, rewards };
   });
 
   if (r.error) return r;
@@ -392,12 +534,16 @@ export function getStoryTimeline(userId) {
   `).all(uid).map((r) => ({ title: r.title, cover: r.cover, category: r.category, completedAt: r.completed_at }));
 
   const choices = db.prepare(`
-    SELECT n.title AS node_title, c.choice, COUNT(*) AS count
+    SELECT n.title AS node_title, n.choices_json, c.choice, COUNT(*) AS count
     FROM player_story_checkins c JOIN story_nodes n ON n.id = c.node_id
     WHERE c.user_id = ? AND c.choice IS NOT NULL AND c.choice != ''
     GROUP BY n.id, c.choice
     ORDER BY n.id ASC, count DESC
-  `).all(uid).map((r) => ({ nodeTitle: r.node_title, choice: r.choice, count: r.count }));
+  `).all(uid).map((r) => {
+    const norm = normalizeChoices(parseJson(r.choices_json, null));
+    const label = (norm.byValue[r.choice] && norm.byValue[r.choice].label) || r.choice;
+    return { nodeTitle: r.node_title, choice: label, count: r.count };
+  });
 
   const items = db.prepare("SELECT name, icon, rarity FROM inventory_items WHERE owner_id = ? AND source = 'story' AND status != 'sold' ORDER BY id DESC").all(uid);
 
@@ -471,6 +617,14 @@ export function importStories(adminUserId, payload) {
         items: Array.isArray(rewards.items) ? rewards.items : [],
       });
 
+      // 结局定义（分支互动剧情用）：[{ mood, code, title, text }]
+      const endings = Array.isArray(item.endings) ? item.endings : [];
+      for (const e of endings) {
+        if (!e || !MOODS.includes(e.mood)) throw bizErr('STORY_INVALID', `剧情「${code}」结局 mood 非法（须为 ${MOODS.join('/')}）`, 400);
+        if (!e.code || !e.title) throw bizErr('STORY_INVALID', `剧情「${code}」结局缺少 code/title`, 400);
+      }
+      const endingsJson = endings.length ? JSON.stringify(endings) : null;
+
       const windowStart = toIsoOrThrow(item.windowStartAt, 'windowStartAt');
       const windowEnd = toIsoOrThrow(item.windowEndAt, 'windowEndAt');
       const status = ['draft', 'published', 'archived'].includes(item.status) ? item.status : 'published';
@@ -483,14 +637,14 @@ export function importStories(adminUserId, payload) {
         db.prepare(`
           UPDATE stories SET title=?, subtitle=?, cover=?, category=?, obtain_mode=?, availability=?,
             window_start_at=?, window_end_at=?, festival_code=?, unlock_task_id=?, gacha_pool_id=?,
-            sequential=?, timeboxed=?, rewards_json=?, sort_order=?, status=?, updated_at=?
+            sequential=?, timeboxed=?, rewards_json=?, endings_json=?, sort_order=?, status=?, updated_at=?
           WHERE id=?
         `).run(
           title, (item.subtitle || '').toString(), item.cover || '📖', (item.category || '日常').toString(),
           obtainMode, availability, windowStart, windowEnd, item.festivalCode || null,
           item.unlockTaskId != null ? Number(item.unlockTaskId) : null,
           item.gachaPoolId != null ? Number(item.gachaPoolId) : null,
-          item.sequential === false ? 0 : 1, item.timeboxed ? 1 : 0, rewardsJson,
+          item.sequential === false ? 0 : 1, item.timeboxed ? 1 : 0, rewardsJson, endingsJson,
           Number.isInteger(Number(item.sortOrder)) ? Number(item.sortOrder) : 0,
           status, now, storyId
         );
@@ -499,14 +653,14 @@ export function importStories(adminUserId, payload) {
         const info = db.prepare(`
           INSERT INTO stories (code, title, subtitle, cover, category, obtain_mode, availability,
             window_start_at, window_end_at, festival_code, unlock_task_id, gacha_pool_id,
-            sequential, timeboxed, rewards_json, sort_order, status, created_by, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            sequential, timeboxed, rewards_json, endings_json, sort_order, status, created_by, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           code, title, (item.subtitle || '').toString(), item.cover || '📖', (item.category || '日常').toString(),
           obtainMode, availability, windowStart, windowEnd, item.festivalCode || null,
           item.unlockTaskId != null ? Number(item.unlockTaskId) : null,
           item.gachaPoolId != null ? Number(item.gachaPoolId) : null,
-          item.sequential === false ? 0 : 1, item.timeboxed ? 1 : 0, rewardsJson,
+          item.sequential === false ? 0 : 1, item.timeboxed ? 1 : 0, rewardsJson, endingsJson,
           Number.isInteger(Number(item.sortOrder)) ? Number(item.sortOrder) : 0,
           status, adminUserId, now, now
         );
@@ -516,10 +670,52 @@ export function importStories(adminUserId, payload) {
 
       // 节点整章替换（全量快照，幂等）
       db.prepare('DELETE FROM story_nodes WHERE story_id = ?').run(storyId);
-      const insNode = db.prepare('INSERT INTO story_nodes (story_id, seq, title, description, checkin_type, tips, choices_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      const insNode = db.prepare('INSERT INTO story_nodes (story_id, seq, title, description, checkin_type, tips, choices_json, campus_variants_json, items_json, popup_json, optional_proof, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
       for (const n of nodes) {
         const ct = CHECKIN_TYPES.includes(n.checkinType) ? n.checkinType : 'none';
-        const choices = Array.isArray(n.choices) ? n.choices.filter((c) => typeof c === 'string' && c.trim()) : null;
+
+        // 选择项：字符串数组（旧）或对象数组（带 value/label/moods/energy/var）
+        let choicesJson = null;
+        if (Array.isArray(n.choices)) {
+          const list = n.choices
+            .filter((c) => (typeof c === 'string' && c.trim()) || (c && typeof c === 'object' && c.value));
+          if (list.length) {
+            const vals = list.map((c) => (typeof c === 'string' ? c : c.value));
+            if (new Set(vals).size !== vals.length) throw bizErr('STORY_INVALID', `剧情「${code}」节点 ${n.seq} 选项 value 重复`, 400);
+            const normalized = list.map((c) => {
+              if (typeof c === 'string') return c;
+              const moods = {};
+              if (c.moods && typeof c.moods === 'object') for (const m of MOODS) if (Number.isFinite(Number(c.moods[m]))) moods[m] = Number(c.moods[m]);
+              return {
+                value: c.value,
+                label: c.label || c.value,
+                ...(c.var ? { var: c.var } : {}),
+                ...(Object.keys(moods).length ? { moods } : {}),
+                ...(Number.isFinite(Number(c.energy)) ? { energy: Number(c.energy) } : {}),
+              };
+            });
+            choicesJson = JSON.stringify(normalized);
+          }
+        }
+
+        // 逐节点掉落物品（分支变体按 when.choice/when.campus，额外件按 proofText/proofPhoto/readPopup）
+        const items = Array.isArray(n.items) ? n.items.map((it) => {
+          if (!it || !it.name) throw bizErr('STORY_INVALID', `剧情「${code}」节点 ${n.seq} 掉落物品缺少 name`, 400);
+          return {
+            name: it.name,
+            icon: it.icon || '🎁',
+            rarity: RARITIES.includes(it.rarity) ? it.rarity : 'common',
+            description: it.description || '',
+            slot: it.slot === 'extra' ? 'extra' : 'main',
+            ...(it.when && typeof it.when === 'object' ? { when: it.when } : {}),
+          };
+        }) : null;
+        const itemsJson = items && items.length ? JSON.stringify(items) : null;
+
+        const campusVariantsJson = n.campusVariants && typeof n.campusVariants === 'object' ? JSON.stringify(n.campusVariants) : null;
+        const popupJson = n.popup && typeof n.popup === 'object' ? JSON.stringify(n.popup) : null;
+        const optionalProof = n.optionalProof ? 1 : 0;
+
         insNode.run(
           storyId,
           Number(n.seq),
@@ -527,7 +723,11 @@ export function importStories(adminUserId, payload) {
           (n.description || '').toString(),
           ct,
           (n.tips || '').toString(),
-          choices && choices.length ? JSON.stringify(choices) : null,
+          choicesJson,
+          campusVariantsJson,
+          itemsJson,
+          popupJson,
+          optionalProof,
           now
         );
       }

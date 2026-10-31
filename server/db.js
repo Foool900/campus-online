@@ -954,6 +954,25 @@ export function initDb() {
       updated_at TEXT    NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    -- Ala 亲密度（养成）：和 AI 助手聊天累积亲密度，分 5 级
+    CREATE TABLE IF NOT EXISTS ala_affinities (
+      user_id     INTEGER PRIMARY KEY,
+      affinity    INTEGER NOT NULL DEFAULT 0,
+      daily_count INTEGER NOT NULL DEFAULT 0,
+      last_day    TEXT    NOT NULL DEFAULT '',
+      updated_at  TEXT    NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- 每日校园问答：每人每天答一题，答对发经验/金币
+    CREATE TABLE IF NOT EXISTS ala_quiz_answers (
+      user_id     INTEGER PRIMARY KEY,
+      date        TEXT    NOT NULL,
+      correct     INTEGER NOT NULL DEFAULT 0,
+      answered_at TEXT    NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // 迁移：老库补 hidden 列（世界频道使用隐藏区域承载）
@@ -1083,6 +1102,23 @@ export function initDb() {
   if (!invCols.includes('slot')) db.exec('ALTER TABLE inventory_items ADD COLUMN slot TEXT;');
   if (!invCols.includes('wardrobe_item_id')) db.exec('ALTER TABLE inventory_items ADD COLUMN wardrobe_item_id INTEGER;');
   if (!invCols.includes('pixel_json')) db.exec('ALTER TABLE inventory_items ADD COLUMN pixel_json TEXT;');
+
+  // 迁移：剧情系统「分支互动」扩展（结局定义 / 校区分支 / 逐节点掉落 / 变量状态）
+  const stCols = db.prepare('PRAGMA table_info(stories)').all().map((c) => c.name);
+  if (!stCols.includes('endings_json')) db.exec('ALTER TABLE stories ADD COLUMN endings_json TEXT;');
+
+  const snCols = db.prepare('PRAGMA table_info(story_nodes)').all().map((c) => c.name);
+  if (!snCols.includes('campus_variants_json')) db.exec('ALTER TABLE story_nodes ADD COLUMN campus_variants_json TEXT;');
+  if (!snCols.includes('items_json')) db.exec('ALTER TABLE story_nodes ADD COLUMN items_json TEXT;');
+  if (!snCols.includes('popup_json')) db.exec('ALTER TABLE story_nodes ADD COLUMN popup_json TEXT;');
+  if (!snCols.includes('optional_proof')) db.exec('ALTER TABLE story_nodes ADD COLUMN optional_proof INTEGER NOT NULL DEFAULT 0;');
+
+  const psCols = db.prepare('PRAGMA table_info(player_stories)').all().map((c) => c.name);
+  if (!psCols.includes('state_json')) db.exec('ALTER TABLE player_stories ADD COLUMN state_json TEXT;');
+  if (!psCols.includes('ending_code')) db.exec('ALTER TABLE player_stories ADD COLUMN ending_code TEXT;');
+
+  const pscCols = db.prepare('PRAGMA table_info(player_story_checkins)').all().map((c) => c.name);
+  if (!pscCols.includes('flags_json')) db.exec('ALTER TABLE player_story_checkins ADD COLUMN flags_json TEXT;');
 
   // 迁移：删除旧的经验分类资产树 + 旧待办（已被金币账户 / tasks 私密任务取代）
   db.exec('DROP TABLE IF EXISTS exp_admin_logs;');

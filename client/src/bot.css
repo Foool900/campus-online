@@ -131,3 +131,13 @@ a.bot-source:hover { background: var(--accent-info-soft); color: var(--text); }
 .bot-model-row input:focus { border-color: var(--accent-info); }
 .bot-model-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .bot-model-actions .hud-btn { font-size: 11px; padding: 0 10px; }
+
+.bot-quiz-q { font-size: 13px; color: var(--text); margin-bottom: 8px; line-height: 1.5; }
+.bot-quiz-hint { font-size: 11px; color: var(--muted); }
+.bot-quiz-opts { display: flex; flex-direction: column; gap: 6px; }
+.bot-quiz-opt { text-align: left; font-size: 12px; padding: 6px 10px; }
+.bot-quiz-opt:disabled { opacity: 0.6; cursor: default; }
+.bot-quiz-result { font-size: 12px; margin-top: 8px; line-height: 1.5; }
+.bot-quiz-result.ok { color: #7fe0b0; }
+.bot-quiz-result.no { color: var(--danger); }
+.bot-quiz-reward { color: var(--gold); }
