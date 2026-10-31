@@ -943,6 +943,19 @@ export function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_botmsg_user ON bot_messages(user_id, id DESC);
 
+    -- 助手会话（多个对话框，每个可独立设人设）
+    CREATE TABLE IF NOT EXISTS bot_conversations (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL,
+      title        TEXT    NOT NULL DEFAULT '',
+      persona_type TEXT    NOT NULL DEFAULT 'default',  -- 'default' 百科 | 'preset' 预设 | 'custom' 自定义
+      persona_key  TEXT,                                -- 预设人设键（ruanmeng 等）
+      persona_text TEXT,                                -- 自定义人设文本
+      created_at   TEXT    NOT NULL,
+      updated_at   TEXT    NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     -- 用户自带模型配置（BYOK）：接入 OpenAI 兼容云模型
     CREATE TABLE IF NOT EXISTS user_ai_configs (
       user_id    INTEGER PRIMARY KEY,
@@ -971,6 +984,14 @@ export function initDb() {
       date        TEXT    NOT NULL,
       correct     INTEGER NOT NULL DEFAULT 0,
       answered_at TEXT    NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- Ala 人设设置（用户可自选人格）
+    CREATE TABLE IF NOT EXISTS ala_settings (
+      user_id    INTEGER PRIMARY KEY,
+      persona    TEXT    NOT NULL DEFAULT 'ruanmeng',
+      updated_at TEXT    NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
@@ -1023,6 +1044,11 @@ export function initDb() {
   const aiCfgCols = db.prepare('PRAGMA table_info(user_ai_configs)').all().map((c) => c.name);
   if (!aiCfgCols.includes('mode')) {
     db.exec("ALTER TABLE user_ai_configs ADD COLUMN mode TEXT NOT NULL DEFAULT 'local';");
+  }
+  // 迁移：bot_messages 补 conversation_id（多对话框）
+  const botMsgCols = db.prepare('PRAGMA table_info(bot_messages)').all().map((c) => c.name);
+  if (!botMsgCols.includes('conversation_id')) {
+    db.exec('ALTER TABLE bot_messages ADD COLUMN conversation_id INTEGER;');
   }
 
   // 迁移：users 补 password_hash / role（登录 + 角色）

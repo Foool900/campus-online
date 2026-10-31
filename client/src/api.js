@@ -309,6 +309,11 @@ export const api = {
   saveAiConfig: (body) => request('/api/bot/ai-config', { method: 'PUT', body: JSON.stringify(body) }),
   clearAiConfig: () => request('/api/bot/ai-config', { method: 'DELETE' }),
   botAffinity: () => request('/api/bot/affinity'),
+  botPersona: () => request('/api/bot/persona'),
+  botConversations: () => request('/api/bot/conversations'),
+  createBotConversation: (body) => request('/api/bot/conversations', { method: 'POST', body: JSON.stringify(body) }),
+  deleteBotConversation: (id) => request(`/api/bot/conversations/${id}`, { method: 'DELETE' }),
+  botConversationMessages: (id) => request(`/api/bot/conversations/${id}/messages`),
   botQuiz: () => request('/api/bot/quiz'),
   botQuizAnswer: (body) => request('/api/bot/quiz/answer', { method: 'POST', body: JSON.stringify(body) }),
 };

@@ -32,7 +32,8 @@ import conversationsRouter from './routes/conversations.js';
 import adminRouter from './routes/admin.js';
 import informationRouter from './routes/information.js';
 import botRouter from './routes/bot.js';
-import { rebuildIndex } from './kb.js';
+import { rebuildIndex, answer } from './kb.js';
+import { ensureAlaAccount, alaUserId, alaGreet } from './ala.js';
 import inventoryRouter from './routes/inventory.js';
 import storyRouter from './routes/stories.js';
 import characterRouter from './routes/character.js';
@@ -54,6 +55,7 @@ ensureKnowledgeDocs();
 ensureDocKnowledge();
 ensureMarketShops();
 ensureSystemAccount();
+ensureAlaAccount();
 if (seeded) {
   console.log('[db] 已写入种子数据：2 个校区 / 区域与频道 / 示例消息与帖子');
 }
@@ -300,6 +302,19 @@ io.on('connection', (socket) => {
       message: result.message,
     });
 
+    // @Ala 触发回复：区域/世界频道里 @Ala 就回（异步不阻塞，防止自触发）
+    if (convType === 'chat' && typeof content === 'string' && /@ala/i.test(content) && userId !== alaUserId()) {
+      const question = content.replace(/@ala/gi, '').replace(/^[\s,，。!！?？:：]+/, '').trim() || '你好呀';
+      answer(question, [], {}).then((r) => {
+        if (r && r.answer && !r.degraded) {
+          const reply = insertConversationMessage('chat', convId, alaUserId(), { content: r.answer });
+          if (reply.message) {
+            io.to(room).emit('message:new', { conversationType: 'chat', conversationId: convId, channelId: convId, postId: null, message: reply.message });
+          }
+        }
+      }).catch(() => {});
+    }
+
     // ===== 触发式成就埋点（消息维度：EXP_010/011/012/013/014）=====
     const unlock = (code) => {
       const ach = triggerAchievement(userId, code);
@@ -394,3 +409,19 @@ function syncKnowledge() {
     });
 }
 setInterval(syncKnowledge, 5 * 60 * 1000);
+
+// Ala 世界频道问候：每小时检查，最近 3 小时没发就发一条
+function alaGreetIfDue() {
+  const uid = alaUserId();
+  const wcId = worldChannelId();
+  const recent = db
+    .prepare("SELECT id FROM messages WHERE user_id = ? AND conversation_type = 'chat' AND conversation_id = ? AND created_at >= ?")
+    .get(uid, wcId, new Date(Date.now() - 3 * 3600000).toISOString());
+  if (recent) return;
+  const r = alaGreet();
+  if (r.message) {
+    io.to(`channel:${wcId}`).emit('message:new', { conversationType: 'chat', conversationId: wcId, channelId: wcId, postId: null, message: r.message });
+  }
+}
+alaGreetIfDue();
+setInterval(alaGreetIfDue, 60 * 60 * 1000);

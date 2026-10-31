@@ -42,3 +42,22 @@ test('touchAffinity 升级提示', () => {
   assert.equal(s.label, '认识');
   assert.equal(s.leveledUp, true);
 });
+
+test('touchAffinity 时间衰减：几天没联系好感度下降', () => {
+  const uid = makeUser();
+  const past = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
+  db.prepare('INSERT INTO ala_affinities (user_id, affinity, daily_count, last_day, updated_at) VALUES (?, 100, 0, ?, ?)').run(uid, past, nowIso());
+  const s = touchAffinity(uid);
+  // 错过 9 天 → 衰减 27，然后今天 +1
+  assert.equal(s.decayed, 27);
+  assert.equal(s.affinity, 74);
+});
+
+test('touchAffinity 昨天联系过不衰减', () => {
+  const uid = makeUser();
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  db.prepare('INSERT INTO ala_affinities (user_id, affinity, daily_count, last_day, updated_at) VALUES (?, 50, 0, ?, ?)').run(uid, yesterday, nowIso());
+  const s = touchAffinity(uid);
+  assert.equal(s.decayed, 0);
+  assert.equal(s.affinity, 51);
+});

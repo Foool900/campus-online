@@ -4,6 +4,7 @@ import { requireRole } from '../auth.js';
 import { answer, rebuildIndex, getStatus } from '../kb.js';
 import { touchAffinity, getAffinity } from '../affinity.js';
 import { quizStatus, answerQuiz } from '../quiz.js';
+import { PERSONAS, dailyMood } from '../persona.js';
 
 const router = Router();
 
@@ -23,18 +24,34 @@ router.post('/ask', async (req, res) => {
   if (!q) return res.status(400).json({ error: '问题不能为空' });
   if (q.length > 500) return res.status(400).json({ error: '问题过长（最多 500 字）' });
 
-  // 带上最近 6 轮对话作为上下文，让 Ala 能「记住」聊天
-  const history = db
-    .prepare('SELECT question, answer FROM bot_messages WHERE user_id = ? ORDER BY id DESC LIMIT 6')
-    .all(req.user.id)
-    .reverse();
+  // 解析会话（多对话框）：拿到该会话的人设规格
+  const convId = Number(req.body?.conversationId);
+  const conv = Number.isInteger(convId) && convId > 0
+    ? db.prepare('SELECT * FROM bot_conversations WHERE id = ? AND user_id = ?').get(convId, req.user.id)
+    : null;
+  const personaSpec = conv
+    ? conv.persona_type === 'custom'
+      ? { type: 'custom', text: conv.persona_text }
+      : conv.persona_type === 'preset'
+        ? { type: 'preset', key: conv.persona_key || 'ruanmeng' }
+        : { type: 'default' }
+    : { type: 'default' };
+
+  // 带上本会话最近 6 轮对话作为上下文
+  const history = conv
+    ? db.prepare('SELECT question, answer FROM bot_messages WHERE user_id = ? AND conversation_id = ? ORDER BY id DESC LIMIT 6').all(req.user.id, conv.id).reverse()
+    : [];
+
   // 用户自带模型（BYOK）：有 key + model 才启用，否则本地 Ollama
   const aiRow = db.prepare('SELECT base_url, api_key, model, mode FROM user_ai_configs WHERE user_id = ?').get(req.user.id);
   const ai = aiRow && aiRow.mode === 'cloud' && aiRow.api_key && aiRow.model ? { baseUrl: aiRow.base_url, apiKey: aiRow.api_key, model: aiRow.model } : null;
-  const result = await answer(q, history, { web: !!req.body?.web, ai });
+  const aff = getAffinity(req.user.id);
+  const result = await answer(q, history, { web: !!req.body?.web, ai, personaSpec, affinityLabel: aff.label });
+
   if (result.answer) {
-    db.prepare('INSERT INTO bot_messages (user_id, question, answer, sources, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    db.prepare('INSERT INTO bot_messages (user_id, conversation_id, question, answer, sources, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
       req.user.id,
+      conv ? conv.id : null,
       q,
       result.answer,
       JSON.stringify(result.sources || []),
@@ -46,11 +63,69 @@ router.post('/ask', async (req, res) => {
   res.json({ ...result, affinity });
 });
 
-// GET /api/bot/history —— 最近 50 条
+// GET /api/bot/history —— 最近 50 条（全部会话）
 router.get('/history', (req, res) => {
   const rows = db
     .prepare('SELECT id, question, answer, sources, created_at AS createdAt FROM bot_messages WHERE user_id = ? ORDER BY id DESC LIMIT 50')
     .all(req.user.id);
+  res.json(rows.map((r) => ({ ...r, sources: safeParse(r.sources) })));
+});
+
+// GET /api/bot/conversations —— 会话列表（无则自动建一个默认「百科助手」）
+router.get('/conversations', (req, res) => {
+  let list = db
+    .prepare('SELECT id, title, persona_type AS personaType, persona_key AS personaKey, created_at AS createdAt FROM bot_conversations WHERE user_id = ? ORDER BY id ASC')
+    .all(req.user.id);
+  if (list.length === 0) {
+    db.prepare("INSERT INTO bot_conversations (user_id, title, persona_type, created_at, updated_at) VALUES (?, '百科助手', 'default', ?, ?)").run(req.user.id, nowIso(), nowIso());
+    list = db
+      .prepare('SELECT id, title, persona_type AS personaType, persona_key AS personaKey, created_at AS createdAt FROM bot_conversations WHERE user_id = ? ORDER BY id ASC')
+      .all(req.user.id);
+  }
+  res.json(list);
+});
+
+// POST /api/bot/conversations —— 新建会话（personaType: default | preset | custom）
+router.post('/conversations', (req, res) => {
+  const title = typeof req.body?.title === 'string' ? req.body.title.trim().slice(0, 40) : '';
+  const personaType = req.body?.personaType === 'preset' || req.body?.personaType === 'custom' ? req.body.personaType : 'default';
+  let personaKey = null;
+  let personaText = null;
+  if (personaType === 'preset') {
+    personaKey = PERSONAS[req.body?.personaKey] ? req.body.personaKey : 'ruanmeng';
+  } else if (personaType === 'custom') {
+    personaText = typeof req.body?.personaText === 'string' ? req.body.personaText.trim().slice(0, 500) : '';
+    if (!personaText) return res.status(400).json({ error: '自定义人设不能为空' });
+  }
+  const finalTitle = title || (personaType === 'custom' ? '自定义角色' : personaType === 'preset' ? PERSONAS[personaKey].name : '百科助手');
+  const info = db
+    .prepare('INSERT INTO bot_conversations (user_id, title, persona_type, persona_key, persona_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(req.user.id, finalTitle, personaType, personaKey, personaText, nowIso(), nowIso());
+  res.status(201).json({ id: Number(info.lastInsertRowid), title: finalTitle, personaType, personaKey });
+});
+
+// DELETE /api/bot/conversations/:id —— 删除会话（至少保留一个）
+router.delete('/conversations/:id', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: '无效的会话 ID' });
+  const conv = db.prepare('SELECT id FROM bot_conversations WHERE id = ? AND user_id = ?').get(id, req.user.id);
+  if (!conv) return res.status(404).json({ error: '会话不存在' });
+  const count = db.prepare('SELECT COUNT(*) AS c FROM bot_conversations WHERE user_id = ?').get(req.user.id).c;
+  if (count <= 1) return res.status(400).json({ error: '至少保留一个会话' });
+  db.prepare('DELETE FROM bot_messages WHERE conversation_id = ?').run(id);
+  db.prepare('DELETE FROM bot_conversations WHERE id = ?').run(id);
+  res.json({ ok: true });
+});
+
+// GET /api/bot/conversations/:id/messages —— 会话历史
+router.get('/conversations/:id/messages', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: '无效的会话 ID' });
+  const conv = db.prepare('SELECT id FROM bot_conversations WHERE id = ? AND user_id = ?').get(id, req.user.id);
+  if (!conv) return res.status(404).json({ error: '会话不存在' });
+  const rows = db
+    .prepare('SELECT id, question, answer, sources, created_at AS createdAt FROM bot_messages WHERE user_id = ? AND conversation_id = ? ORDER BY id DESC LIMIT 100')
+    .all(req.user.id, id);
   res.json(rows.map((r) => ({ ...r, sources: safeParse(r.sources) })));
 });
 
@@ -112,6 +187,14 @@ router.delete('/ai-config', (req, res) => {
 // GET /api/bot/affinity —— 当前亲密度
 router.get('/affinity', (req, res) => {
   res.json(getAffinity(req.user.id));
+});
+
+// GET /api/bot/persona —— 可选预设人设列表 + 今日心情（供新建会话用）
+router.get('/persona', (req, res) => {
+  res.json({
+    mood: dailyMood(),
+    personas: Object.entries(PERSONAS).map(([key, p]) => ({ key, name: p.name })),
+  });
 });
 
 // GET /api/bot/quiz —— 今日校园问答

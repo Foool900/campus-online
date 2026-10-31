@@ -15,7 +15,7 @@ export default function HudOverlay({ children }) {
   }
 
   // 市场 / 设置 / 背包 / 信息大厅 / 剧情 / 卡池：全屏页面外壳
-  if (location.pathname === '/market' || location.pathname === '/settings' || location.pathname === '/information' || location.pathname === '/bag' || location.pathname === '/lottery' || location.pathname.startsWith('/story')) {
+  if (location.pathname === '/market' || location.pathname === '/settings' || location.pathname === '/information' || location.pathname === '/bag' || location.pathname === '/lottery' || location.pathname === '/bot' || location.pathname.startsWith('/story')) {
     return (
       <div className="fullscreen-page">
         {children}

@@ -5,6 +5,7 @@ import { db, nowIso } from './db.js';
 import { checkOllama, embedTexts, generate } from './ollama.js';
 import { searchWeb } from './web.js';
 import { chatCompletion } from './llm.js';
+import { personaIntro } from './persona.js';
 
 // 精华帖在检索时的加权（叠加到余弦相似度上，让精华帖更靠前）
 const FEATURED_BOOST = 0.1;
@@ -63,13 +64,13 @@ export function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-// Ala 人设 + 混合回答：社区问题只依据【社区资料】，闲聊则自然回应。
-export function buildPrompt(question, hits, history = []) {
+// Ala 人设（同学）+ 心情 + 才艺 + 混合回答：社区问题只依据【社区资料】，闲聊则自然回应。
+export function buildPrompt(question, hits, history = [], personaSpec = {}, affinityLabel = '陌生') {
   const system = [
-    '你是 Ala，校园在线里的一只可爱小助手（软萌女生，语气轻快友好，偶尔用 emoji 或颜文字，但别堆砌）。',
+    personaIntro(personaSpec, affinityLabel),
     '回答规则：',
-    '1. 用户问社区/平台相关的问题（注册登录、任务规则、夜市玩法、重置数据库、经验金币等）时，只依据下面的【社区资料】回答，不要编造；资料里有答案就在末尾标注（来源N），资料里没有就说「这个 Ala 还不太清楚，可以问问管理员哦」。',
-    '2. 用户只是打招呼或闲聊，就可爱自然地回应。',
+    '1. 用户问社区/平台相关的问题（注册登录、任务规则、夜市玩法、重置数据库、经验金币等）时，只依据下面的【社区资料】回答，不要编造；资料里有答案就在末尾标注（来源N），资料里没有就如实说明「资料里没有找到相关内容」。',
+    '2. 其他情况按你的设定自然回应。',
     '3. 回答尽量简短，用中文。',
   ].join('\n');
 
@@ -84,13 +85,14 @@ export function buildPrompt(question, hits, history = []) {
 }
 
 // 联网搜索模式的 prompt：依据网页资料回答
-export function buildWebPrompt(question, webResults, history = []) {
+export function buildWebPrompt(question, webResults, history = [], personaSpec = {}, affinityLabel = '陌生') {
   const system = [
-    '你是 Ala，校园在线里的一只可爱小助手。用户开启了联网搜索，你可以依据下面【网页资料】回答。',
+    personaIntro(personaSpec, affinityLabel),
+    '用户开启了联网搜索，你可以依据下面【网页资料】回答。',
     '规则：',
     '1. 根据【网页资料】用中文简明回答，并在末尾标注引用编号（来源N）。',
     '2. 资料不足时如实说明「这部分网上资料里没找到」，不要编造。',
-    '3. 回答尽量简短。',
+    '3. 回答尽量简短，保持你的设定。',
   ].join('\n');
 
   const parts = webResults.map((r, i) => `[来源${i + 1}]《${r.title}》\n${r.url}\n${r.text || r.snippet}`).join('\n\n');
@@ -287,6 +289,8 @@ export async function answer(question, history = [], options = {}) {
   }
 
   const ai = options.ai || null;
+  const personaSpec = options.personaSpec || { type: 'default' };
+  const affinityLabel = options.affinityLabel || '陌生';
 
   // 联网搜索模式：先用云模型改写查询词（更准），再搜 Bing + 抓正文
   if (options.web) {
@@ -301,7 +305,7 @@ export async function answer(question, history = [], options = {}) {
         reason: 'web_failed',
       };
     }
-    const { system, prompt } = buildWebPrompt(question, webResults, history);
+    const { system, prompt } = buildWebPrompt(question, webResults, history, personaSpec, affinityLabel);
     const gen = await runGenerate(system, prompt, ai);
     if (gen.text === null) return genError(gen.via);
     return {
@@ -314,7 +318,7 @@ export async function answer(question, history = [], options = {}) {
 
   // 本地知识库模式
   const hits = await search(question, 5);
-  const { system, prompt } = buildPrompt(question, hits, history);
+  const { system, prompt } = buildPrompt(question, hits, history, personaSpec, affinityLabel);
   const gen = await runGenerate(system, prompt, ai);
   if (gen.text === null) return genError(gen.via);
   return { answer: gen.text.trim(), sources: dedupeSources(hits), ollamaUp: true, degraded: false };
