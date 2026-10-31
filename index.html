@@ -27,9 +27,23 @@
   figcaption { text-align:center; color:var(--muted); font-size:14px; margin-top:10px; }
   footer { text-align:center; color:var(--muted); padding:44px 0 72px; font-size:14px; }
   footer a { color:var(--accent); text-decoration:none; }
+  .notice { background:#241d0f; border-bottom:1px solid #5c4a1e; }
+  .notice-inner { max-width:1060px; margin:0 auto; padding:12px 24px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; text-align:center; font-size:14.5px; color:var(--text); }
+  .notice-inner strong { color:#ffd166; }
+  .notice-inner .badge { background:#ffd166; color:#1a1200; font-weight:800; padding:2px 10px; border-radius:6px; font-size:13px; white-space:nowrap; }
+  .notice-inner a { color:#ffd166; font-weight:700; text-decoration:none; }
+  .notice-inner a:hover { text-decoration:underline; }
 </style>
 </head>
 <body>
+  <div class="notice">
+    <div class="notice-inner">
+      <span class="badge">📌 项目主页</span>
+      <span>本页是<strong>静态介绍页</strong>，不是运行中的网站。<strong>在线体验请点 →</strong></span>
+      <a href="http://218.244.151.114/" target="_blank" rel="noopener">🖥️ 在线体验 http://218.244.151.114/</a>
+    </div>
+  </div>
+
   <header class="wrap">
     <h1>Campus Online</h1>
     <p class="tagline">校园游戏化社交平台 · 以游戏逻辑重构校园社交</p>
