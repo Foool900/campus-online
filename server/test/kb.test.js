@@ -270,6 +270,57 @@ test('answer 联网搜索失败时优雅降级', async () => {
   }
 });
 
+test('answer 用户自带云模型（BYOK）', async () => {
+  insertDoc('faq-x', '文档A', '内容。'.repeat(20));
+  await rebuildIndex();
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    const u = String(url);
+    if (u.includes('/api/tags')) return jsonResponse({ models: [] });
+    if (u.includes('/api/embed')) {
+      const body = JSON.parse(options.body || '{}');
+      return jsonResponse({ embeddings: (body.input || []).map((t) => fakeVec(t)) });
+    }
+    if (u.includes('/chat/completions')) return jsonResponse({ choices: [{ message: { content: '云模型回答（来源1）' } }] });
+    throw new Error('unexpected ' + u);
+  };
+  try {
+    const ai = { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-123', model: 'deepseek-chat' };
+    const r = await answer('问题', [], { ai });
+    assert.equal(r.degraded, false);
+    assert.equal(r.answer, '云模型回答（来源1）');
+    assert.ok(r.sources.length > 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('answer 云模型失败时给出明确提示', async () => {
+  insertDoc('faq-x', '文档A', '内容。'.repeat(20));
+  await rebuildIndex();
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    const u = String(url);
+    if (u.includes('/api/tags')) return jsonResponse({ models: [] });
+    if (u.includes('/api/embed')) {
+      const body = JSON.parse(options.body || '{}');
+      return jsonResponse({ embeddings: (body.input || []).map((t) => fakeVec(t)) });
+    }
+    if (u.includes('/chat/completions')) return new Response('err', { status: 401 });
+    throw new Error('unexpected ' + u);
+  };
+  try {
+    const ai = { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-123', model: 'deepseek-chat' };
+    const r = await answer('问题', [], { ai });
+    assert.equal(r.degraded, true);
+    assert.match(r.answer, /云模型调用失败/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('setPostFeatured 切换精华并更新检索加权', async () => {
   const pid = makePost('精华候选', '这是帖子正文，包含多个句子。'.repeat(5), 0);
 

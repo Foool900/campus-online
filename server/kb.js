@@ -4,6 +4,7 @@
 import { db, nowIso } from './db.js';
 import { checkOllama, embedTexts, generate } from './ollama.js';
 import { searchWeb } from './web.js';
+import { chatCompletion } from './llm.js';
 
 // 精华帖在检索时的加权（叠加到余弦相似度上，让精华帖更靠前）
 const FEATURED_BOOST = 0.1;
@@ -233,6 +234,31 @@ function dedupeSources(hits) {
   return out;
 }
 
+// 生成回答：优先用用户自带云模型（OpenAI 兼容），否则本地 Ollama
+async function runGenerate(system, prompt, ai) {
+  if (ai && ai.baseUrl && ai.apiKey && ai.model) {
+    const text = await chatCompletion({
+      baseUrl: ai.baseUrl,
+      apiKey: ai.apiKey,
+      model: ai.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt },
+      ],
+    });
+    return { text, via: 'cloud' };
+  }
+  const text = await generate(prompt, system);
+  return { text, via: 'local' };
+}
+
+function genError(via) {
+  if (via === 'cloud') {
+    return { answer: '云模型调用失败，请检查接口地址 / API Key / 模型名是否正确。', sources: [], degraded: true, reason: 'generate_failed' };
+  }
+  return { answer: 'Ala 服务未启动。请稍后再试。', sources: [], ollamaUp: false, degraded: true, reason: 'generate_failed' };
+}
+
 export async function answer(question, history = [], options = {}) {
   if (!(await checkOllama(1500))) {
     return {
@@ -243,6 +269,8 @@ export async function answer(question, history = [], options = {}) {
       reason: 'ollama_down',
     };
   }
+
+  const ai = options.ai || null;
 
   // 联网搜索模式：搜 Bing + 抓正文，依据网页资料回答
   if (options.web) {
@@ -257,12 +285,10 @@ export async function answer(question, history = [], options = {}) {
       };
     }
     const { system, prompt } = buildWebPrompt(question, webResults, history);
-    const text = await generate(prompt, system);
-    if (text === null) {
-      return { answer: 'Ala 服务未启动。请稍后再试。', sources: [], ollamaUp: false, degraded: true, reason: 'generate_failed' };
-    }
+    const gen = await runGenerate(system, prompt, ai);
+    if (gen.text === null) return genError(gen.via);
     return {
-      answer: text.trim(),
+      answer: gen.text.trim(),
       sources: webResults.map((r) => ({ title: r.title, snippet: r.snippet || (r.text || '').slice(0, 120), sourceType: 'web', url: r.url })),
       ollamaUp: true,
       degraded: false,
@@ -272,11 +298,9 @@ export async function answer(question, history = [], options = {}) {
   // 本地知识库模式
   const hits = await search(question, 5);
   const { system, prompt } = buildPrompt(question, hits, history);
-  const text = await generate(prompt, system);
-  if (text === null) {
-    return { answer: 'Ala 服务未启动。请稍后再试。', sources: [], ollamaUp: false, degraded: true, reason: 'generate_failed' };
-  }
-  return { answer: text.trim(), sources: dedupeSources(hits), ollamaUp: true, degraded: false };
+  const gen = await runGenerate(system, prompt, ai);
+  if (gen.text === null) return genError(gen.via);
+  return { answer: gen.text.trim(), sources: dedupeSources(hits), ollamaUp: true, degraded: false };
 }
 
 export async function getStatus() {

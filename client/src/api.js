@@ -305,6 +305,9 @@ export const api = {
   botHistory: () => request('/api/bot/history'),
   botStatus: () => request('/api/bot/status'),
   botRebuild: () => request('/api/bot/rebuild', { method: 'POST' }),
+  aiConfig: () => request('/api/bot/ai-config'),
+  saveAiConfig: (body) => request('/api/bot/ai-config', { method: 'PUT', body: JSON.stringify(body) }),
+  clearAiConfig: () => request('/api/bot/ai-config', { method: 'DELETE' }),
 };
 
 export default api;

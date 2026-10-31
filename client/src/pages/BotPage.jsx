@@ -13,11 +13,18 @@ export default function BotPage() {
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
   const [webMode, setWebMode] = useState(false);
+  const [aiConfig, setAiConfig] = useState(null);
+  const [showModel, setShowModel] = useState(false);
+  const [cfgBaseUrl, setCfgBaseUrl] = useState('');
+  const [cfgModel, setCfgModel] = useState('');
+  const [cfgKey, setCfgKey] = useState('');
+  const [cfgMode, setCfgMode] = useState('local');
   const listRef = useRef(null);
   const idSeq = useRef(0);
 
   useEffect(() => {
     api.botStatus().then(setStatus).catch(() => {});
+    api.aiConfig().then((c) => { setAiConfig(c); setCfgMode(c.mode || 'local'); setCfgBaseUrl(c.baseUrl || ''); setCfgModel(c.model || ''); }).catch(() => {});
     api
       .botHistory()
       .then((rows) => {
@@ -72,6 +79,31 @@ export default function BotPage() {
     }
   }
 
+  async function saveAiConfig() {
+    setError('');
+    try {
+      const r = await api.saveAiConfig({ mode: cfgMode, baseUrl: cfgBaseUrl.trim(), model: cfgModel.trim(), apiKey: cfgKey.trim() });
+      setAiConfig((c) => ({ ...(c || {}), mode: r.mode, baseUrl: cfgBaseUrl.trim(), model: cfgModel.trim(), hasKey: r.hasKey, apiKeyMasked: r.apiKeyMasked }));
+      setCfgKey('');
+    } catch (err) {
+      setError(err.message || '保存失败');
+    }
+  }
+
+  async function clearAiConfig() {
+    setError('');
+    try {
+      await api.clearAiConfig();
+      setAiConfig({ mode: 'local', baseUrl: '', model: '', hasKey: false, apiKeyMasked: '' });
+      setCfgMode('local');
+      setCfgBaseUrl('');
+      setCfgModel('');
+      setCfgKey('');
+    } catch (err) {
+      setError(err.message || '清除失败');
+    }
+  }
+
   const offline = status && status.ollamaUp === false;
 
   return (
@@ -83,6 +115,10 @@ export default function BotPage() {
           <div className="bot-meta">
             {offline ? <span className="bot-offline">● 本地模型离线</span> : <span className="bot-online">● 知识库在线</span>}
             {status.chunks > 0 && <span>· {status.chunks} 条资料</span>}
+            {aiConfig && (aiConfig.mode === 'cloud' && aiConfig.hasKey ? <span>· 模型：{aiConfig.model}</span> : <span>· 本地 Ollama</span>)}
+            <button type="button" className="hud-btn bot-model-btn" onClick={() => setShowModel((v) => !v)}>
+              ⚙️ 模型
+            </button>
             {user?.role === 'admin' && (
               <button type="button" className="hud-btn bot-rebuild" onClick={rebuild}>
                 重建知识库
@@ -91,6 +127,39 @@ export default function BotPage() {
           </div>
         )}
       </div>
+
+      {showModel && (
+        <div className="bot-model-panel">
+          <div className="bot-model-seg">
+            <button type="button" className={'hud-btn' + (cfgMode === 'local' ? ' active' : '')} onClick={() => setCfgMode('local')}>
+              🖥️ 本地模型（免费·基础）
+            </button>
+            <button type="button" className={'hud-btn' + (cfgMode === 'cloud' ? ' active' : '')} onClick={() => setCfgMode('cloud')}>
+              ☁️ 云模型（自带 Key）
+            </button>
+          </div>
+          {cfgMode === 'cloud' && (
+            <>
+              <div className="bot-model-row">
+                <label>接口地址</label>
+                <input value={cfgBaseUrl} onChange={(e) => setCfgBaseUrl(e.target.value)} placeholder="https://api.deepseek.com/v1" />
+              </div>
+              <div className="bot-model-row">
+                <label>模型名</label>
+                <input value={cfgModel} onChange={(e) => setCfgModel(e.target.value)} placeholder="deepseek-chat" />
+              </div>
+              <div className="bot-model-row">
+                <label>API Key</label>
+                <input type="password" value={cfgKey} onChange={(e) => setCfgKey(e.target.value)} placeholder={aiConfig?.hasKey ? `已保存 ${aiConfig.apiKeyMasked}（留空则不修改）` : 'sk-...'} />
+              </div>
+            </>
+          )}
+          <div className="bot-model-actions">
+            <button type="button" className="hud-btn" onClick={saveAiConfig}>保存</button>
+            {aiConfig?.hasKey && <button type="button" className="hud-btn warn" onClick={clearAiConfig}>清除配置</button>}
+          </div>
+        </div>
+      )}
 
       {error && <div className="error-banner">{error}</div>}
 

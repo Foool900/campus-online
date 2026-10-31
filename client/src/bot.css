@@ -95,3 +95,39 @@ a.bot-source:hover { background: var(--accent-info-soft); color: var(--text); }
 .bot-input input:disabled { opacity: 0.6; }
 .bot-input .hud-btn { flex-shrink: 0; }
 .bot-web-toggle { font-size: 11px; padding: 0 8px; white-space: nowrap; }
+.bot-model-btn { font-size: 11px; padding: 0 8px; white-space: nowrap; }
+
+.bot-model-seg { display: flex; gap: 8px; }
+.bot-model-seg .hud-btn { font-size: 11px; padding: 0 10px; white-space: nowrap; }
+
+.bot-model-panel {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--glass-line);
+  border-radius: 6px;
+  background: var(--overlay-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bot-model-row { display: flex; align-items: center; gap: 8px; }
+.bot-model-row label {
+  flex: 0 0 64px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: 'Consolas', 'Menlo', monospace;
+}
+.bot-model-row input {
+  flex: 1;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px solid var(--glass-line);
+  background: var(--card);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.bot-model-row input:focus { border-color: var(--accent-info); }
+.bot-model-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.bot-model-actions .hud-btn { font-size: 11px; padding: 0 10px; }

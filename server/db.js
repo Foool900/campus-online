@@ -942,6 +942,18 @@ export function initDb() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_botmsg_user ON bot_messages(user_id, id DESC);
+
+    -- 用户自带模型配置（BYOK）：接入 OpenAI 兼容云模型
+    CREATE TABLE IF NOT EXISTS user_ai_configs (
+      user_id    INTEGER PRIMARY KEY,
+      base_url   TEXT    NOT NULL DEFAULT '',
+      api_key    TEXT    NOT NULL DEFAULT '',
+      model      TEXT    NOT NULL DEFAULT '',
+      mode       TEXT    NOT NULL DEFAULT 'local',   -- 'local' 本地 Ollama | 'cloud' 用户云模型
+      created_at TEXT    NOT NULL,
+      updated_at TEXT    NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // 迁移：老库补 hidden 列（世界频道使用隐藏区域承载）
@@ -987,6 +999,11 @@ export function initDb() {
   const chunkCols = db.prepare('PRAGMA table_info(knowledge_chunks)').all().map((c) => c.name);
   if (!chunkCols.includes('boost')) {
     db.exec('ALTER TABLE knowledge_chunks ADD COLUMN boost INTEGER NOT NULL DEFAULT 0;');
+  }
+  // 迁移：user_ai_configs 补 mode 列（本地/云模型选择）
+  const aiCfgCols = db.prepare('PRAGMA table_info(user_ai_configs)').all().map((c) => c.name);
+  if (!aiCfgCols.includes('mode')) {
+    db.exec("ALTER TABLE user_ai_configs ADD COLUMN mode TEXT NOT NULL DEFAULT 'local';");
   }
 
   // 迁移：users 补 password_hash / role（登录 + 角色）
