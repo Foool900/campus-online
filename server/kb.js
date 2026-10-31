@@ -252,6 +252,22 @@ async function runGenerate(system, prompt, ai) {
   return { text, via: 'local' };
 }
 
+// 用云模型把用户问题改写成更精准的搜索查询词（无云模型则原样返回）
+async function refineQuery(question, ai) {
+  if (!ai || !ai.baseUrl || !ai.apiKey || !ai.model) return question;
+  const refined = await chatCompletion({
+    baseUrl: ai.baseUrl,
+    apiKey: ai.apiKey,
+    model: ai.model,
+    messages: [
+      { role: 'system', content: '你是搜索查询改写器。把用户的问题改写成简洁、具体、适合搜索引擎的中文查询词，只输出查询词本身，不要解释、不要标点。' },
+      { role: 'user', content: question },
+    ],
+  });
+  const q = (refined || '').trim();
+  return q && q.length >= 2 ? q.slice(0, 60) : question;
+}
+
 function genError(via) {
   if (via === 'cloud') {
     return { answer: '云模型调用失败，请检查接口地址 / API Key / 模型名是否正确。', sources: [], degraded: true, reason: 'generate_failed' };
@@ -272,9 +288,10 @@ export async function answer(question, history = [], options = {}) {
 
   const ai = options.ai || null;
 
-  // 联网搜索模式：搜 Bing + 抓正文，依据网页资料回答
+  // 联网搜索模式：先用云模型改写查询词（更准），再搜 Bing + 抓正文
   if (options.web) {
-    const webResults = await searchWeb(question, { topN: 3 });
+    const query = await refineQuery(question, ai);
+    const webResults = await searchWeb(query, { topN: 3 });
     if (webResults.length === 0) {
       return {
         answer: '我试着联网搜索了，但没搜到结果（可能网络或搜索引擎临时不可用）。换个问法试试，或关闭「联网搜索」用本地知识库。',

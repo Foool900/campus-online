@@ -296,6 +296,38 @@ test('answer 用户自带云模型（BYOK）', async () => {
   }
 });
 
+test('answer 联网搜索 + 云模型：先改写查询词再搜索', async () => {
+  const originalFetch = globalThis.fetch;
+  const bingUrls = [];
+  let chatCalls = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    const u = String(url);
+    if (u.includes('/api/tags')) return jsonResponse({ models: [] });
+    if (u.includes('/chat/completions')) {
+      chatCalls += 1;
+      if (chatCalls === 1) return jsonResponse({ choices: [{ message: { content: '北京今天天气' } }] }); // 改写查询
+      return jsonResponse({ choices: [{ message: { content: '云模型回答（来源1）' } }] }); // 生成
+    }
+    if (u.includes('cn.bing.com')) {
+      bingUrls.push(u);
+      return new Response('<html><head><script>x</script></head><body><h2><a href="https://a.com/1">天气网站</a></h2><p>晴天</p></body></html>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+    }
+    if (u.includes('a.com')) return new Response('<html><body>今天晴。</body></html>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+    throw new Error('unexpected ' + u);
+  };
+  try {
+    const ai = { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-123', model: 'deepseek-chat' };
+    const r = await answer('今天天气怎么样？', [], { web: true, ai });
+    assert.equal(r.degraded, false);
+    assert.equal(r.answer, '云模型回答（来源1）');
+    assert.equal(chatCalls, 2); // 改写 1 次 + 生成 1 次
+    assert.ok(bingUrls.length > 0);
+    assert.ok(bingUrls[0].includes(encodeURIComponent('北京今天天气'))); // 搜索用了改写后的词
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('answer 云模型失败时给出明确提示', async () => {
   insertDoc('faq-x', '文档A', '内容。'.repeat(20));
   await rebuildIndex();
