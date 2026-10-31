@@ -39,7 +39,7 @@ export default function MarketBargainInbox({ bargains, open, onChanged }) {
     setMsg('');
     try {
       const r = await api.marketAcceptBargain(b.id);
-      setMsg(`已接受，生成订单 #${r.orderId}`);
+      setMsg(`已接受砍价，订单 #${r.orderId} 待买家支付`);
       onChanged && onChanged();
     } catch (e) {
       setErr(e.message);

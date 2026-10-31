@@ -193,6 +193,7 @@ export const api = {
   marketAcceptBargain: (id) => request(`/api/market/bargains/${id}/accept`, { method: 'POST' }),
   marketRejectBargain: (id) => request(`/api/market/bargains/${id}/reject`, { method: 'POST' }),
   marketPayOrder: (id) => request(`/api/market/orders/${id}/pay`, { method: 'POST' }),
+  marketCancelOrder: (id) => request(`/api/market/orders/${id}/cancel`, { method: 'POST' }),
   marketDeliverOrder: (id) => request(`/api/market/orders/${id}/deliver`, { method: 'POST' }),
   marketConfirmOrder: (id) => request(`/api/market/orders/${id}/confirm`, { method: 'POST' }),
   marketOpenBlindbox: (id) => request(`/api/market/orders/${id}/open`, { method: 'POST' }),

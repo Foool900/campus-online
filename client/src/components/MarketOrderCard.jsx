@@ -22,6 +22,20 @@ const ORDER_STATUS_CLASS = {
   disputed: 'status-terminated',
 };
 
+// 支付截止时间：待支付订单的倒计时/过期提示（无字段则不显示）
+function fmtDeadline(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const left = d.getTime() - Date.now();
+  if (left <= 0) return '已超时';
+  const mins = Math.floor(left / 60000);
+  if (mins < 60) return `${mins} 分钟后`;
+  const hrs = Math.floor(mins / 60);
+  const mm = mins % 60;
+  return mm > 0 ? `${hrs} 小时 ${mm} 分后` : `${hrs} 小时后`;
+}
+
 // 盲盒开盒结果文案：优先 .text，surprise:true → 惊喜盲盒，其余对象 → 原始 JSON
 function boxResultText(result) {
   if (result && typeof result === 'object' && !Array.isArray(result)) {
@@ -50,6 +64,7 @@ export default function MarketOrderCard({ order, side, onChanged, onError, onSuc
   };
 
   const pay = () => run(() => api.marketPayOrder(order.id), '已支付');
+  const cancel = () => run(() => api.marketCancelOrder(order.id), '已取消，金币已退回');
   const confirmOrder = () => run(() => api.marketConfirmOrder(order.id), '已确认收货');
   const deliver = () => run(() => api.marketDeliverOrder(order.id), '已交付');
 
@@ -72,10 +87,16 @@ export default function MarketOrderCard({ order, side, onChanged, onError, onSuc
             {ORDER_STATUS[order.status] || order.status}
           </span>
           <div style={{ fontSize: 12, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><CoinIcon size={12} /> {order.price_coin}</div>
+          {order.status === 'pending_payment' && order.pay_deadline_at && (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>支付截止：{fmtDeadline(order.pay_deadline_at)}</div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           {side === 'bought' && order.status === 'pending_payment' && (
-            <button className="btn primary" disabled={busy} onClick={pay}>支付</button>
+            <>
+              <button className="btn primary" disabled={busy} onClick={pay}>支付</button>
+              <button className="btn ghost" disabled={busy} onClick={cancel}>取消</button>
+            </>
           )}
           {side === 'bought' && order.status === 'paid_escrow' && order.item_type === 'blindbox' && (
             <button className="btn primary" disabled={busy} onClick={openBox}>{busy ? '开盒中…' : '开盒'}</button>
