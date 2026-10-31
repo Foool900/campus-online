@@ -2,10 +2,11 @@
 // 纯函数（splitText / cosineSimilarity / buildPrompt）与带 IO 的函数分离，便于测试。
 
 import { db, nowIso } from './db.js';
-import { checkOllama, embedTexts, generate } from './ollama.js';
+import { checkOllama, generate } from './ollama.js';
 import { searchWeb } from './web.js';
 import { chatCompletion } from './llm.js';
 import { personaIntro } from './persona.js';
+import { embedAll, hasCloudEmbedding } from './embed.js';
 
 // 精华帖在检索时的加权（叠加到余弦相似度上，让精华帖更靠前）
 const FEATURED_BOOST = 0.1;
@@ -158,7 +159,7 @@ export async function rebuildIndex() {
   }
 
   // 关键：向量化在事务之外 await（better-sqlite3 事务是同步的，不能跨 await）
-  const vectors = await embedTexts(units.map((u) => u.text));
+  const vectors = await embedAll(units.map((u) => u.text));
   if (!vectors) {
     invalidateChunkCache();
     return { docs: docs.length, posts: posts.length, chunks: 0, embedded: 0, error: 'Ollama 服务未启动，无法重建索引' };
@@ -184,7 +185,7 @@ export async function upsertPostChunks(postId) {
     deletePostChunks(postId);
     return { chunks: 0 };
   }
-  const vectors = await embedTexts(texts);
+  const vectors = await embedAll(texts);
   if (!vectors) return { chunks: 0, error: 'Ollama 服务未启动，索引未更新' };
   const now = nowIso();
   db.transaction(() => {
@@ -208,7 +209,7 @@ export function deletePostChunks(postId) {
 // ---------------------------------------------------------------------------
 
 export async function search(query, topK = 5) {
-  const vecs = await embedTexts([query]);
+  const vecs = await embedAll([query]);
   if (!vecs || !vecs[0]) return [];
   const qv = vecs[0];
   const scored = getChunks()
@@ -278,7 +279,7 @@ function genError(via) {
 }
 
 export async function answer(question, history = [], options = {}) {
-  if (!(await checkOllama(1500))) {
+  if (!hasCloudEmbedding() && !(await checkOllama(1500))) {
     return {
       answer: 'Ala 暂时连不上本地模型（Ollama 未启动）。请确认 Ollama 服务已运行，稍后再试。',
       sources: [],

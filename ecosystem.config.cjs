@@ -14,6 +14,9 @@ module.exports = {
         OLLAMA_URL: 'http://127.0.0.1:11434',
         OLLAMA_CHAT_MODEL: 'qwen2.5:1.5b',
         OLLAMA_EMBED_MODEL: 'nomic-embed-text',
+        // 云向量化（优先）：Key 不放这里，写入服务器 server/.env（git 忽略）
+        EMBEDDING_BASE_URL: 'https://api.siliconflow.cn/v1',
+        EMBEDDING_MODEL: 'BAAI/bge-m3',
       },
     },
   ],
