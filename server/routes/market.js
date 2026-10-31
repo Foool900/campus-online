@@ -608,10 +608,27 @@ export function cancelOrder(buyerId, orderId) {
   if (order.buyer_id !== buyerId) return { error: '不是你的订单', status: 403 };
   if (order.status !== 'pending_payment') return { error: '当前状态不可取消', status: 409 };
 
+  const item = db.prepare('SELECT * FROM market_items WHERE id=?').get(order.item_id);
   const r = runTx(() => {
-    db.prepare("UPDATE market_orders SET status='cancelled', cancelled_at=? WHERE id=? AND status='pending_payment'").run(nowIso(), orderId);
+    const up = db.prepare("UPDATE market_orders SET status='cancelled', cancelled_at=? WHERE id=? AND status='pending_payment'").run(nowIso(), orderId);
+    if (up.changes === 0) throwBiz('ORDER_BAD_STATE', '取消失败', 409);
+
+    // 砍价订单：发起砍价时已冻结出价，取消需退回冻结金币（否则买家金币永久锁死）
+    if (order.type === 'bargain') {
+      const rk = `bargain:${orderId}:cancel`;
+      const coin = applyCoinRaw({ fromUserId: order.buyer_id, amount: order.price_coin, type: 'refund', relatedType: 'market_bargain', relatedId: order.bargain_id || orderId, idempotencyKey: rk });
+      if (coin.error) throwBiz(coin.code, coin.error, coin.status);
+      if (order.bargain_id) db.prepare("UPDATE market_bargains SET status='cancelled' WHERE id=?").run(order.bargain_id);
+      writeLedger({ sessionId: item?.session_id, bizType: 'bargain_unfreeze', bizId: order.bargain_id || orderId, op: 'refund', userId: order.buyer_id, amount: order.price_coin, coinTxId: coin.txId, idempotencyKey: `${rk}:ledger` });
+    }
+
     // 商品回 active（若还开市）或 expired
-    db.prepare("UPDATE market_items SET status='active', reserved_order_id=NULL WHERE id=? AND status='reserved'").run(order.item_id);
+    const session = item ? getSession(item.session_id) : null;
+    if (session && session.status === 'open') {
+      db.prepare("UPDATE market_items SET status='active', reserved_order_id=NULL WHERE id=? AND status='reserved'").run(order.item_id);
+    } else {
+      db.prepare("UPDATE market_items SET status='expired', reserved_order_id=NULL WHERE id=? AND status='reserved'").run(order.item_id);
+    }
     return true;
   });
   if (r.error) return r;

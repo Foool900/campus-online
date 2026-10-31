@@ -8,7 +8,7 @@ const { config } = await import('../config.js');
 const { systemAccountId } = await import('../treasury.js');
 const {
   createSession, createItem, listItem, buyItem, confirmOrder,
-  createBargain, acceptBargain, payOrder, grabStall, confirmStall, openBlindbox,
+  createBargain, acceptBargain, payOrder, cancelOrder, grabStall, confirmStall, openBlindbox,
 } = await import('../routes/market.js');
 
 initDb();
@@ -90,6 +90,26 @@ test('砍价：出价冻结 → 接受生成订单 → 支付不重复冻结 →
   assert.equal(c.error, undefined);
   assert.equal(acct(buyer).frozenCoin, 0);
   assert.equal(acct(seller).coin, 1000 - 5 + (60 - fee));
+});
+
+test('砍价订单取消：退回冻结出价 + 商品回 active + 砍价状态 cancelled', () => {
+  const sid = openSession();
+  const seller = makeUser(1000);
+  const buyer = makeUser(1000);
+  const stallId = occupiedStall(seller, sid);
+  const itemId = listedItem(seller, sid, stallId, { price: 100 });
+
+  const br = createBargain(buyer, itemId, 60);
+  const ar = acceptBargain(seller, br.bargainId); // pending_payment 订单
+  assert.equal(acct(buyer).frozenCoin, 60);
+
+  const c = cancelOrder(buyer, ar.orderId);
+  assert.equal(c.error, undefined);
+  assert.equal(db.prepare('SELECT status FROM market_orders WHERE id=?').get(ar.orderId).status, 'cancelled');
+  assert.equal(db.prepare('SELECT status FROM market_items WHERE id=?').get(itemId).status, 'active');
+  assert.equal(db.prepare('SELECT status FROM market_bargains WHERE id=?').get(br.bargainId).status, 'cancelled');
+  assert.equal(acct(buyer).frozenCoin, 0); // 冻结出价退回
+  assert.equal(acct(buyer).coin, 1000);    // 余额还原
 });
 
 test('购买自己的商品被拒绝', () => {
