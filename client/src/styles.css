@@ -1,19 +1,3 @@
-:root {
-  --blue: #4a90d9;
-  --blue-dark: #3a7bc0;
-  --green: #5bc49a;
-  --yellow: #f5c84c;
-  --orange: #f08a5d;
-  --red: #f27b7b;
-  --bg: #f4f9f6;
-  --card: #ffffff;
-  --text: #2b3a42;
-  --muted: #6b7c86;
-  --line: #e2ece6;
-  --shadow: 0 4px 16px rgba(43, 58, 66, 0.08);
-  --radius: 14px;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -1033,6 +1017,11 @@ textarea {
   animation: fadeInUp 0.2s ease;
 }
 
+.toast.error {
+  background: rgba(192, 57, 43, 0.95);
+  color: #fff;
+}
+
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -1076,4 +1065,36 @@ textarea {
   .profile-stats {
     margin-left: 0;
   }
+}
+
+/* ---------- 主题切换（设置页） ---------- */
+.theme-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-line);
+}
+
+.theme-seg-btn {
+  border: none;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.theme-seg-btn:hover {
+  color: var(--text);
+}
+
+.theme-seg-btn.active {
+  background: var(--blue);
+  color: #fff;
 }

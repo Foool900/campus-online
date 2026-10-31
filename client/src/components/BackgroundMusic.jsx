@@ -5,6 +5,7 @@ const LS_TRACK = 'bgm_track';
 
 // 可选背景音乐曲目：把 mp3 放到 client/public/sounds/ 下，在此登记即可新增曲目
 export const BGM_TRACKS = [
+  { id: 'kiravale', title: 'Kiravale · Travel Songs', src: '/sounds/bgm-kiravale-travel-songs.mp3' },
   { id: 'calm-ambient', title: 'Calm & Ambient · PERTENENCIA Y RENUNCIA', src: '/sounds/bgm-calm-ambient.mp3' },
 ];
 

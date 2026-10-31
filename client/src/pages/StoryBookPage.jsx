@@ -95,7 +95,7 @@ export default function StoryBookPage() {
               <div className="story-book-sub-h">剧情收藏</div>
               <div className="story-book-items">
                 {story.items.map((it, i) => (
-                  <span key={i} className="story-book-item" style={{ color: RARITY_COLOR[it.rarity] || '#fff' }} title={it.name}>
+                  <span key={i} className="story-book-item" style={{ color: RARITY_COLOR[it.rarity] || 'var(--text)' }} title={it.name}>
                     {it.icon} {it.name}
                   </span>
                 ))}

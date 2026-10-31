@@ -14,3 +14,10 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      # 知识库助手：Render 免费版无法运行 Ollama，助手会自动降级（保留默认 localhost 即可）
+      - key: OLLAMA_URL
+        value: http://127.0.0.1:11434
+      - key: OLLAMA_CHAT_MODEL
+        value: qwen2.5:1.5b
+      - key: OLLAMA_EMBED_MODEL
+        value: nomic-embed-text

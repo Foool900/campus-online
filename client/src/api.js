@@ -111,6 +111,8 @@ export const api = {
     request(`/api/posts/${id}/notes`, { method: 'POST', body: JSON.stringify(body) }),
   updateStatus: (id, body) =>
     request(`/api/posts/${id}/status`, { method: 'PATCH', body: JSON.stringify(body) }),
+  setPostFeatured: (id, body) =>
+    request(`/api/posts/${id}/featured`, { method: 'POST', body: JSON.stringify(body) }),
   recallMessage: (postId, messageId, body) =>
     request(`/api/posts/${postId}/messages/${messageId}/recall`, { method: 'POST', body: JSON.stringify(body) }),
   reactMessage: (postId, messageId, body) =>
@@ -298,6 +300,11 @@ export const api = {
     return request(`/api/information/posts${s ? `?${s}` : ''}`);
   },
   informationNews: () => request('/api/information/news'),
+  // 知识库助手
+  botAsk: (body) => request('/api/bot/ask', { method: 'POST', body: JSON.stringify(body) }),
+  botHistory: () => request('/api/bot/history'),
+  botStatus: () => request('/api/bot/status'),
+  botRebuild: () => request('/api/bot/rebuild', { method: 'POST' }),
 };
 
 export default api;

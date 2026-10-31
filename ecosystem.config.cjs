@@ -10,6 +10,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 80,
+        // 知识库助手：本机 Ollama（默认监听 127.0.0.1:11434）
+        OLLAMA_URL: 'http://127.0.0.1:11434',
+        OLLAMA_CHAT_MODEL: 'qwen2.5:1.5b',
+        OLLAMA_EMBED_MODEL: 'nomic-embed-text',
       },
     },
   ],

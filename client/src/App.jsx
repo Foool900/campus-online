@@ -6,6 +6,7 @@ import { UserContext } from './UserContext.jsx';
 import Layout from './components/Layout.jsx';
 import { AchievementToastProvider } from './components/AchievementToast.jsx';
 import { BackgroundMusicProvider } from './components/BackgroundMusic.jsx';
+import ThemeProvider from './ThemeContext.jsx';
 import LoginModal from './components/LoginModal.jsx';
 import TasksPage from './pages/TasksPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
@@ -23,6 +24,7 @@ import StoryPage from './pages/StoryPage.jsx';
 import StoryDetailPage from './pages/StoryDetailPage.jsx';
 import StoryBookPage from './pages/StoryBookPage.jsx';
 import CharacterPage from './pages/CharacterPage.jsx';
+import BotPage from './pages/BotPage.jsx';
 
 const TOKEN_KEY = 'campus_token';
 
@@ -78,6 +80,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AchievementToastProvider>
+      <ThemeProvider>
       <BackgroundMusicProvider>
       <UserContext.Provider value={value}>
         <Layout key={token || 'anon'}>
@@ -99,12 +102,14 @@ export default function App() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/co-online" element={<CoOnlinePage />} />
             <Route path="/information" element={<InformationHallPage />} />
+            <Route path="/bot" element={<BotPage />} />
             <Route path="*" element={null} />
           </Routes>
         </Layout>
         {authReady && !token && <LoginModal onAuth={applyAuth} />}
       </UserContext.Provider>
       </BackgroundMusicProvider>
+      </ThemeProvider>
       </AchievementToastProvider>
     </BrowserRouter>
   );

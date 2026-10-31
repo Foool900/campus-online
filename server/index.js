@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { initDb, db, nowIso } from './db.js';
 import { ensureSystemAccount } from './treasury.js';
-import { seedIfEmpty, ensureWorldChannel, ensureAdmin, ensureAchievements, ensureStories } from './seed.js';
+import { seedIfEmpty, ensureWorldChannel, ensureAdmin, ensureAchievements, ensureStories, ensureKnowledgeDocs, ensureDocKnowledge } from './seed.js';
 import { bumpPresence, presenceList, bumpGlobalPresence } from './presence.js';
 import areasRouter from './routes/areas.js';
 import channelsRouter from './routes/channels.js';
@@ -31,6 +31,8 @@ import friendsRouter from './routes/friends.js';
 import conversationsRouter from './routes/conversations.js';
 import adminRouter from './routes/admin.js';
 import informationRouter from './routes/information.js';
+import botRouter from './routes/bot.js';
+import { rebuildIndex } from './kb.js';
 import inventoryRouter from './routes/inventory.js';
 import storyRouter from './routes/stories.js';
 import characterRouter from './routes/character.js';
@@ -48,11 +50,18 @@ ensureWorldChannel();
 ensureAdmin();
 ensureAchievements();
 ensureStories();
+ensureKnowledgeDocs();
+ensureDocKnowledge();
 ensureMarketShops();
 ensureSystemAccount();
 if (seeded) {
   console.log('[db] 已写入种子数据：2 个校区 / 区域与频道 / 示例消息与帖子');
 }
+
+// 知识库索引预热（非阻塞：Ollama 未启动时静默降级，之后可 admin 重建或下次启动补齐）
+rebuildIndex()
+  .then((r) => console.log(`[kb] 知识库索引就绪：${r.chunks} 块（${r.docs} 文档 / ${r.posts} 帖子）`))
+  .catch((e) => console.warn('[kb] 初始化索引失败（Ollama 未启动？）:', e.message));
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -95,6 +104,8 @@ app.use('/api', friendsRouter);
 app.use('/api', conversationsRouter);
 // 信息大厅：挂在 adminRouter 之前（admin 路由带无路径 requireRole，会拦截所有 /api/*）
 app.use('/api/information', informationRouter);
+// 知识库助手：同样必须挂在 adminRouter 之前
+app.use('/api/bot', botRouter);
 app.use('/api', inventoryRouter);
 app.use('/api', storyRouter);
 app.use('/api', characterRouter);
@@ -139,6 +150,27 @@ function broadcastPresence(type, id) {
   io.to(convRoom(type, id)).emit('presence:update', { conversationType: type, conversationId: id, online: presenceList(type, id) });
 }
 
+// 在线成员变更合并推送：进出房间/断线都是高频事件，逐条 broadcastPresence 会在大房间（如世界频道）
+// 造成 O(房间人数) 的惊群放大。改用“脏房间集合 + 定时合并”：事件只把房间标记为脏，500ms 后一次性
+// 广播最终人数，把 churn 的 O(n²) 摊平成 O(脏房间数)。presenceList 读的是内存集合，实时已更新，合并安全。
+const dirtyPresenceRooms = new Set();
+
+function markPresenceDirty(type, id) {
+  if (!Number.isInteger(id)) return;
+  dirtyPresenceRooms.add(`${type}:${id}`);
+}
+
+function flushPresence() {
+  if (dirtyPresenceRooms.size === 0) return;
+  const rooms = [...dirtyPresenceRooms];
+  dirtyPresenceRooms.clear();
+  for (const key of rooms) {
+    const i = key.indexOf(':');
+    broadcastPresence(key.slice(0, i), Number(key.slice(i + 1)));
+  }
+}
+setInterval(flushPresence, 500);
+
 function trackPresence(socket, type, id, userId) {
   if (!Number.isInteger(id) || !Number.isInteger(userId)) return;
   socket.data.userId = userId;
@@ -147,7 +179,7 @@ function trackPresence(socket, type, id, userId) {
   if (socket.data.rooms.has(key)) return;
   socket.data.rooms.add(key);
   bumpPresence(type, id, userId, 1);
-  broadcastPresence(type, id);
+  markPresenceDirty(type, id);
 }
 
 function untrackPresence(socket, type, id, userId) {
@@ -156,7 +188,7 @@ function untrackPresence(socket, type, id, userId) {
   if (!socket.data.rooms?.has(key)) return;
   socket.data.rooms.delete(key);
   bumpPresence(type, id, userId, -1);
-  broadcastPresence(type, id);
+  markPresenceDirty(type, id);
 }
 
 // Socket.IO 鉴权：握手带 token，未登录拒绝连接
@@ -225,7 +257,7 @@ io.on('connection', (socket) => {
       for (const key of rooms) {
         const i = key.indexOf(':');
         bumpPresence(key.slice(0, i), Number(key.slice(i + 1)), userId, -1);
-        broadcastPresence(key.slice(0, i), Number(key.slice(i + 1)));
+        markPresenceDirty(key.slice(0, i), Number(key.slice(i + 1)));
       }
     }
   });
@@ -343,3 +375,22 @@ function tickMarket() {
 }
 tickMarket();
 setInterval(tickMarket, 30 * 1000);
+
+// 知识库定时同步：每 5 分钟重读文档 + 重新索引（新帖子/文档改动自动生效，Ollama 离线自动跳过）
+let kbSyncing = false;
+function syncKnowledge() {
+  if (kbSyncing) return;
+  kbSyncing = true;
+  try {
+    ensureDocKnowledge();
+  } catch (e) {
+    console.warn('[kb] 同步读取文档失败:', e.message);
+  }
+  rebuildIndex()
+    .then((r) => console.log(r.error ? `[kb] 同步跳过：${r.error}` : `[kb] 定时同步完成：${r.chunks} 块（${r.docs} 文档 / ${r.posts} 帖子）`))
+    .catch((e) => console.warn('[kb] 定时同步失败:', e.message))
+    .finally(() => {
+      kbSyncing = false;
+    });
+}
+setInterval(syncKnowledge, 5 * 60 * 1000);

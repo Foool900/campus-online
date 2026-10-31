@@ -40,9 +40,9 @@ export default function MarketStallBoard({ stalls, myStall, open, isStudent, ses
         {stalls.map((s) => (
           <div key={s.id} style={{
             padding: '6px 4px', textAlign: 'center', borderRadius: 6, fontSize: 12,
-            border: '1px solid rgba(255,255,255,.14)',
-            background: s.owner_id === user?.id ? 'rgba(143,211,255,.2)' : s.status === 'occupied' ? 'rgba(255,200,100,.12)' : 'transparent',
-            color: s.owner_id === user?.id ? '#8fd3ff' : 'var(--muted, #888)',
+            border: '1px solid var(--glass-line)',
+            background: s.owner_id === user?.id ? 'var(--accent-info-soft)' : s.status === 'occupied' ? 'var(--gold-soft)' : 'transparent',
+            color: s.owner_id === user?.id ? 'var(--accent-info)' : 'var(--muted)',
           }}>
             <div>{s.stall_no}</div>
             <div style={{ fontSize: 10 }}>{STALL_STATUS[s.status]}</div>

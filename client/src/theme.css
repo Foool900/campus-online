@@ -1,0 +1,143 @@
+/* ============================================================
+   Campus Online · 主题 token 唯一真源（夜航 night / 白昼 daylight）
+   在 main.jsx 里最先加载。所有颜色变量在此集中定义，通过
+   <html data-theme="night|daylight"> 作用域切换。
+   默认（无 data-theme）＝ 夜航，向后兼容。
+   ============================================================ */
+
+/* ===================== 夜航（默认，暗色科幻 HUD） ===================== */
+:root,
+:root[data-theme='night'] {
+  /* ---- 核心 13 项（沿用现有名） ---- */
+  --blue: #8b9df5;
+  --blue-dark: #6d7cf0;
+  --green: #34d399;
+  --yellow: #f5c76a;
+  --orange: #fb923c;
+  --red: #f87171;
+  --bg: #0a0b18;
+  --card: rgba(20, 25, 36, 0.78);
+  --text: #e7edf4;
+  --muted: #93a0ad;
+  --line: rgba(255, 255, 255, 0.1);
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --radius: 14px;
+
+  /* ---- 扩展语义 token ---- */
+  --surface-0: #0a0b18;
+  --surface-1: #141416;
+  --surface-2: #18181b;
+  --surface-hover: #18181b;
+  --glass-fill: rgba(255, 255, 255, 0.04);
+  --glass-line: rgba(255, 255, 255, 0.08);
+  --glass-strong: rgba(255, 255, 255, 0.12);
+  --accent-info: #8fd3ff;
+  --accent-info-soft: rgba(143, 211, 255, 0.14);
+  --ok: #34d399;
+  --ok-soft: rgba(52, 211, 153, 0.12);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --gold: #f5c76a;
+  --gold-soft: rgba(245, 199, 106, 0.14);
+  --gold-strong: #f5a623;
+  --page-shell: rgba(10, 10, 12, 0.88);
+  --overlay-dim: rgba(0, 0, 0, 0.25);
+
+  /* ---- 白昼地图磁贴粉彩（夜航占位，实际不被使用） ---- */
+  --pastel-mint: #d8f5e8;
+  --pastel-lavender: #e9e4f5;
+  --pastel-pink: #fde3ea;
+  --pastel-blue: #dcf0fc;
+
+  /* ---- 市场 --mk-*（夜市） ---- */
+  --mk-bg: rgba(9, 9, 11, 0.75);
+  --mk-card: rgba(255, 255, 255, 0.03);
+  --mk-card-hover: rgba(255, 255, 255, 0.06);
+  --mk-line: rgba(255, 255, 255, 0.06);
+  --mk-radius: 20px;
+  --mk-radius-sm: 14px;
+  --mk-accent: #8fd3ff;
+  --mk-accent-soft: rgba(143, 211, 255, 0.14);
+  --mk-num: #f5f7fa;
+  --mk-label: #888;
+  --mk-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  --mk-glow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 0 20px rgba(143, 211, 255, 0.08);
+
+  /* ---- 店铺竞拍 --au-* ---- */
+  --au-card: #151a27;
+  --au-line: rgba(255, 255, 255, 0.08);
+  --au-line-hover: rgba(255, 255, 255, 0.16);
+  --au-gold: #f5a623;
+  --au-gold-hi: #f7c948;
+  --au-ink: #1f1403;
+  --au-ok: #34d399;
+  --au-warn: #fbbf24;
+}
+
+/* ===================== 白昼（温和亮色 SaaS） ===================== */
+:root[data-theme='daylight'] {
+  /* ---- 核心 13 项 ---- */
+  --blue: #7c93e8;
+  --blue-dark: #5f77d6;
+  --green: #6fd3a8;
+  --yellow: #f7d06a;
+  --orange: #f9a878;
+  --red: #f2a0a0;
+  --bg: #f7f9ff;
+  --card: #ffffff;
+  --text: #333333;
+  --muted: #64748b;
+  --line: rgba(124, 147, 232, 0.16);
+  --shadow: 0 8px 32px rgba(93, 109, 182, 0.12);
+  --radius: 20px;
+
+  /* ---- 扩展语义 token ---- */
+  --surface-0: #f7f9ff;
+  --surface-1: #ffffff;
+  --surface-2: #ffffff;
+  --surface-hover: #f8fafc;
+  --glass-fill: rgba(124, 147, 232, 0.06);
+  --glass-line: rgba(124, 147, 232, 0.14);
+  --glass-strong: rgba(124, 147, 232, 0.1);
+  --accent-info: #3f8fd6;
+  --accent-info-soft: rgba(63, 143, 214, 0.1);
+  --ok: #2fb886;
+  --ok-soft: rgba(47, 184, 134, 0.12);
+  --danger: #e07676;
+  --danger-soft: rgba(224, 118, 118, 0.12);
+  --gold: #e0a63c;
+  --gold-soft: rgba(224, 166, 60, 0.14);
+  --gold-strong: #c98a1f;
+  --page-shell: rgba(247, 249, 255, 0.88);
+  --overlay-dim: #ffffff;
+
+  /* ---- 白昼地图磁贴粉彩 ---- */
+  --pastel-mint: #d8f5e8;
+  --pastel-lavender: #e9e4f5;
+  --pastel-pink: #fde3ea;
+  --pastel-blue: #dcf0fc;
+
+  /* ---- 市场 --mk-*（白昼集市） ---- */
+  --mk-bg: rgba(247, 249, 255, 0.75);
+  --mk-card: rgba(255, 255, 255, 0.72);
+  --mk-card-hover: rgba(255, 255, 255, 0.9);
+  --mk-line: rgba(124, 147, 232, 0.16);
+  --mk-radius: 20px;
+  --mk-radius-sm: 14px;
+  --mk-accent: #3f8fd6;
+  --mk-accent-soft: rgba(63, 143, 214, 0.1);
+  --mk-num: #2b3452;
+  --mk-label: #8a92a6;
+  --mk-shadow: 0 8px 32px rgba(93, 109, 182, 0.12);
+  --mk-glow: inset 0 0 0 1px rgba(124, 147, 232, 0.1), 0 0 20px rgba(63, 143, 214, 0.06);
+
+  /* ---- 店铺竞拍 --au-* ---- */
+  --au-card: #ffffff;
+  --au-line: rgba(124, 147, 232, 0.14);
+  --au-line-hover: rgba(124, 147, 232, 0.26);
+  --au-gold: #c98a1f;
+  --au-gold-hi: #e0a63c;
+  --au-ink: #5b3a0a;
+  --au-ok: #2fb886;
+  --au-warn: #d99a1f;
+}

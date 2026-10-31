@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useUser } from '../UserContext.jsx';
 import { useBackgroundMusic } from '../components/BackgroundMusic.jsx';
+import { useTheme } from '../ThemeContext.jsx';
 import { CheckIcon, CrownIcon, GearIcon, IdCardIcon, InboxIcon, MusicIcon, ShieldIcon } from '../components/MarketIcons.jsx';
 
 const STATUS_LABELS = { pending: '审核中', approved: '已通过', rejected: '已拒绝' };
@@ -44,6 +45,7 @@ export default function SettingsPage() {
   // 超级管理员：admin 且持有 ADMIN_GRANT（与后端 isSuperAdmin 一致）
   const isSuper = isAdmin && (user?.permissions || []).includes('ADMIN_GRANT');
   const bgm = useBackgroundMusic();
+  const { theme, themes, setTheme } = useTheme();
 
   useEffect(() => {
     api.verificationMe().then(setMyApp).catch(() => {});
@@ -211,6 +213,24 @@ export default function SettingsPage() {
           {tab === 'personal' && (
             <div className="card">
               <h3 style={{ marginTop: 0 }}>个性化</h3>
+
+              <div className="bgm-row">
+                <span className="bgm-label">主题</span>
+                <div className="theme-seg" role="radiogroup" aria-label="主题">
+                  {themes.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={theme === t.id}
+                      className={'theme-seg-btn' + (theme === t.id ? ' active' : '')}
+                      onClick={() => setTheme(t.id)}
+                    >
+                      <span aria-hidden="true">{t.icon}</span> {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="bgm-row">
                 <span className="bgm-label">背景音乐</span>

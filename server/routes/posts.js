@@ -3,6 +3,7 @@ import { db, nowIso } from '../db.js';
 import { onlineCount } from '../presence.js';
 import { requireRole } from '../auth.js';
 import { notifyNewProgressAchievements } from '../achievements.js';
+import { upsertPostChunks } from '../kb.js';
 
 const router = Router();
 
@@ -14,6 +15,7 @@ const SELECT_POST = `
          p.content,
          p.category,
          p.status,
+         p.featured,
          p.created_at AS createdAt,
          u.nickname,
          u.avatar,
@@ -298,6 +300,31 @@ router.patch('/posts/:id/status', (req, res) => {
   }
 
   res.json({ post: db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(id), systemMessage });
+});
+
+// 精华帖开关：仅管理员可标记，标记后自动进入知识库（Ollama 离线则留待下次重建）
+export function setPostFeatured(postId, featured) {
+  const post = db.prepare('SELECT id FROM posts WHERE id = ?').get(postId);
+  if (!post) return { error: '活动不存在', status: 404 };
+  db.prepare('UPDATE posts SET featured = ? WHERE id = ?').run(featured ? 1 : 0, postId);
+  return { postId, featured: !!featured };
+}
+
+// POST /api/posts/:id/featured —— 仅 admin 标记精华帖
+router.post('/posts/:id/featured', requireRole('admin'), async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: '无效的活动 ID' });
+  const featured = !!req.body?.featured;
+
+  const r = setPostFeatured(id, featured);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+
+  // 无论设为精华还是取消，都重新索引该帖（精华=检索加权；取消=正常权重，仍在库中）
+  const u = await upsertPostChunks(id);
+  const indexed = !u.error;
+  const indexError = u.error || null;
+
+  res.json({ featured, indexed, indexError, post: db.prepare(`${SELECT_POST} WHERE p.id = ?`).get(id) });
 });
 
 function mapNote(row) {

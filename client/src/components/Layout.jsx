@@ -211,6 +211,7 @@ export default function Layout({ children }) {
           onAchievements={() => navigate('/profile?tab=achievements')}
           onStory={() => navigate('/story')}
           onCharacter={() => navigate('/character')}
+          onBot={() => navigate('/bot')}
         />
       ) : (
         <>
@@ -235,6 +236,7 @@ export default function Layout({ children }) {
             onSettings={() => navigate('/settings')}
             onStory={() => navigate('/story')}
             onCharacter={() => navigate('/character')}
+            onBot={() => navigate('/bot')}
           />
         </>
       )}
@@ -263,7 +265,7 @@ export default function Layout({ children }) {
       {/* Toast / 错误 */}
       {toast && <div className="toast">{toast}</div>}
       {error && (
-        <div className="toast" style={{ background: 'rgba(120, 22, 22, 0.94)' }}>
+        <div className="toast error">
           {error}
         </div>
       )}

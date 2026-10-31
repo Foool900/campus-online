@@ -117,7 +117,7 @@ export default function StoryDetailPage() {
         {Number(rewards.exp) > 0 && <span className="story-reward">⭐ +{rewards.exp} 经验</span>}
         {Number(rewards.coin) > 0 && <span className="story-reward">🪙 +{rewards.coin} 金币</span>}
         {rewardItems.map((it, i) => (
-          <span key={i} className="story-reward" style={{ color: RARITY_COLOR[it.rarity] || '#fff' }}>
+          <span key={i} className="story-reward" style={{ color: RARITY_COLOR[it.rarity] || 'var(--text)' }}>
             {it.icon || '🎁'} {it.name}
           </span>
         ))}

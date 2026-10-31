@@ -1,0 +1,211 @@
+/* ============================================================
+   Campus Online · 白昼主题结构差异层
+   在 gacha.css 之后加载。只承载「纯 CSS 无法用 token 表达的
+   结构差异」：隐藏暗色装饰（四角括号 / 扫描线 / 星尘 / HUD 框），
+   以及白昼地图网格 / 等距磁贴 / 玻璃面板 / 药丸按钮的重绘。
+   所有规则都锁在 [data-theme='daylight'] 作用域下，夜航零影响。
+   ============================================================ */
+
+/* ---------- 隐藏暗色科幻装饰 ---------- */
+[data-theme='daylight'] .hud-frame,
+[data-theme='daylight'] .corner,
+[data-theme='daylight'] .mm-corner,
+[data-theme='daylight'] .wc-corner,
+[data-theme='daylight'] .ov-corner,
+[data-theme='daylight'] .scanline,
+[data-theme='daylight'] .breath-glow,
+[data-theme='daylight'] .crosshair,
+[data-theme='daylight'] .coord-readout,
+[data-theme='daylight'] .guide-arrow,
+[data-theme='daylight'] .map-vignette {
+  display: none !important;
+}
+
+/* ---------- 地图背景：柔和粉彩光斑 + 极浅网格 ---------- */
+[data-theme='daylight'] .map-viewport {
+  background:
+    radial-gradient(80% 60% at 28% 28%, var(--pastel-lavender), transparent 62%),
+    radial-gradient(70% 55% at 72% 72%, var(--pastel-mint), transparent 60%),
+    radial-gradient(60% 50% at 50% 82%, var(--pastel-pink), transparent 55%),
+    var(--surface-0);
+}
+
+[data-theme='daylight'] .map-layer .grid-coarse,
+[data-theme='daylight'] .map-layer .grid-fine {
+  stroke: rgba(124, 147, 232, 0.10);
+}
+
+/* ---------- 地点标签：无衬线、白描边光晕 ---------- */
+[data-theme='daylight'] .area-label {
+  fill: var(--text);
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  letter-spacing: 0;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 4px;
+}
+
+/* ---------- 等距磁贴节点 ---------- */
+[data-theme='daylight'] .tile-node { cursor: pointer; }
+[data-theme='daylight'] .tile-node:hover {
+  filter: drop-shadow(0 6px 10px rgba(93, 109, 182, 0.25));
+}
+[data-theme='daylight'] .tile-node.selected .tile-top {
+  stroke: var(--blue);
+  stroke-width: 2px;
+}
+[data-theme='daylight'] .tile-glyph { pointer-events: none; user-select: none; }
+
+/* ---------- 玻璃面板：白玻璃 + 大圆角 + 软投影 ---------- */
+[data-theme='daylight'] .hud-panel,
+[data-theme='daylight'] .hud-panel-soft {
+  background: var(--card);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--shadow);
+  border-radius: 20px;
+}
+
+/* ---------- HUD 按钮：药丸形 + 无衬线 ---------- */
+[data-theme='daylight'] .hud-btn {
+  border-radius: 999px;
+  color: var(--text);
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  letter-spacing: 0;
+  background: var(--card);
+  border: 1px solid var(--glass-line);
+  box-shadow: 0 2px 8px rgba(93, 109, 182, 0.08);
+}
+[data-theme='daylight'] .hud-btn:hover {
+  background: var(--accent-info-soft);
+  border-color: var(--accent-info-soft);
+  color: var(--text);
+}
+[data-theme='daylight'] .hud-btn.active {
+  background: var(--accent-info);
+  border-color: var(--accent-info);
+  color: #fff;
+}
+
+/* ---------- 主 HUD 文本：去 mono 等宽、去字距 ---------- */
+[data-theme='daylight'] .topcenter,
+[data-theme='daylight'] .tc-title,
+[data-theme='daylight'] .tc-edit,
+[data-theme='daylight'] .minimap-label,
+[data-theme='daylight'] .quickbar-label,
+[data-theme='daylight'] .tr-nick,
+[data-theme='daylight'] .tr-level,
+[data-theme='daylight'] .wc-title {
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+/* ---------- 白昼卡片：纯白 + 大圆角 + 软投影 + 留白 ---------- */
+[data-theme='daylight'] .card,
+[data-theme='daylight'] .todo-card,
+[data-theme='daylight'] .mk-card {
+  background: #ffffff;
+  border: 1px solid var(--glass-line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+[data-theme='daylight'] .card { padding: 18px 20px; }
+
+/* ---------- 左下控制台（世界频道）：白玻璃 ---------- */
+[data-theme='daylight'] .world-chat {
+  background: var(--card);
+  border: 1px solid var(--glass-line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+[data-theme='daylight'] .world-chat .wc-title,
+[data-theme='daylight'] .world-chat .wc-who {
+  color: var(--text);
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+/* ---------- 任务钱包（PILOT_LV）：浅紫胶囊 + 深紫字 ---------- */
+[data-theme='daylight'] .task-wallet {
+  background: #e9e4f5;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 8px 16px;
+  color: #5b4b8a;
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  letter-spacing: 0;
+}
+[data-theme='daylight'] .task-wallet .tw-val { color: #5b4b8a; font-weight: 700; }
+[data-theme='daylight'] .task-wallet .tw-sep { color: rgba(91, 75, 138, 0.35); }
+
+/* ---------- 标签 / 徽章：粉彩胶囊 + 同色系深字 ---------- */
+[data-theme='daylight'] .reward-chip,
+[data-theme='daylight'] .post-category,
+[data-theme='daylight'] .duty-tag,
+[data-theme='daylight'] .status-badge,
+[data-theme='daylight'] .done-badge {
+  border-radius: 999px;
+  border: none;
+  padding: 3px 10px;
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+[data-theme='daylight'] .reward-chip { background: #fdf3d8; color: #a16207; }
+[data-theme='daylight'] .post-category { background: #dbeafe; color: #2563a8; }
+[data-theme='daylight'] .duty-tag { background: #e9e4f5; color: #5b4b8a; }
+[data-theme='daylight'] .done-badge { background: #d8f5e8; color: #1f7a5c; }
+
+[data-theme='daylight'] .status-open,
+[data-theme='daylight'] .status-published { background: #dbeafe; color: #2563a8; }
+[data-theme='daylight'] .status-ongoing,
+[data-theme='daylight'] .status-approved,
+[data-theme='daylight'] .status-done { background: #d8f5e8; color: #1f7a5c; }
+[data-theme='daylight'] .status-accepted { background: #fdf3d8; color: #a16207; }
+[data-theme='daylight'] .status-submitted { background: #e9e4f5; color: #5b4b8a; }
+[data-theme='daylight'] .status-draft,
+[data-theme='daylight'] .status-todo,
+[data-theme='daylight'] .status-ended,
+[data-theme='daylight'] .status-expired { background: #eef1f6; color: #5b6472; }
+[data-theme='daylight'] .status-cancelled,
+[data-theme='daylight'] .status-terminated { background: #fde3ea; color: #b04a63; }
+
+/* ---------- 文字：蓝字改深字、去等宽 ---------- */
+[data-theme='daylight'] .todo-title,
+[data-theme='daylight'] .post-title,
+[data-theme='daylight'] .page-title,
+[data-theme='daylight'] .page-head h1,
+[data-theme='daylight'] .profile-name,
+[data-theme='daylight'] .lb-name,
+[data-theme='daylight'] .chat-header h3,
+[data-theme='daylight'] .modal-card h2 {
+  color: var(--text);
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+/* ---------- 左侧导航：纯白 + 粉彩胶囊选中 ---------- */
+[data-theme='daylight'] .mk-sidebar {
+  background: #ffffff;
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--shadow);
+}
+[data-theme='daylight'] .mk-nav:hover {
+  background: #f3f5fb;
+  color: var(--text);
+}
+[data-theme='daylight'] .mk-nav.active {
+  background: #e9e4f5;
+  color: #5b4b8a;
+  box-shadow: none;
+}
+
+/* ---------- 小地图：去掉暗色内阴影 / 冷光 ---------- */
+[data-theme='daylight'] .minimap .mm-ring {
+  box-shadow: inset 0 0 12px rgba(93, 109, 182, 0.08);
+}
+[data-theme='daylight'] .minimap .mm-dot {
+  box-shadow: 0 0 8px var(--accent-info-soft);
+}
+[data-theme='daylight'] .minimap .mm-view {
+  border-color: var(--accent-info-soft);
+}

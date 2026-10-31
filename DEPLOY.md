@@ -46,11 +46,28 @@ pm2 startup    # 复制它输出的最后一行命令执行，实现开机自启
 
 浏览器打开：**http://你的公网IP/** —— 就是给同学访问的网址。
 
+## 第五步：安装 Ollama 本地模型（知识库助手，可选）
+
+知识库助手依赖本机 Ollama 提供两个本地模型（零成本、离线、不调用外部 API）：
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen2.5:1.5b        # 对话模型（约 1GB）
+ollama pull nomic-embed-text     # 向量模型（约 274MB）
+systemctl enable --now ollama    # 开机自启
+```
+
+- Ollama 默认监听 `127.0.0.1:11434`，与后端同机，无需额外配置。
+- **2G 内存提示**：建议给 Ollama 设 `OLLAMA_NUM_PARALLEL=1`、`OLLAMA_MAX_LOADED_MODELS=1`，避免同时加载两个模型导致 OOM。可在 `/etc/systemd/system/ollama.service` 的 `[Service]` 段加 `Environment=OLLAMA_NUM_PARALLEL=1` 等配置。
+- Ollama 未启动时助手会自动降级（返回「服务未启动」提示），不影响其它功能。
+
 ## 常见问题
 
 - **想换端口**：把 `ecosystem.config.cjs` 里的 `PORT: 80` 改掉，并在安全组放行对应端口，然后 `pm2 restart campus-online`。
 - **改了代码要更新**：`cd /opt/campus-online && git pull && npm run build && pm2 restart campus-online`。
 - **备份聊天数据**：SQLite 文件在 `server/data/campus.db`，直接下载该文件即可。
+- **助手提示「服务未启动」**：服务器上的 Ollama 没跑或没拉模型，见「第五步」。本地开发时先在电脑上 `ollama serve` 并 `ollama pull` 两个模型。
+- **Render 免费版跑不了 Ollama**：助手会自动降级，这是预期行为，不是 bug。
 - **到期提醒**：学生免费期最长 12 个月，到期前记得续费或备份导出数据，超期资源会被回收。
 
 ## 备案说明

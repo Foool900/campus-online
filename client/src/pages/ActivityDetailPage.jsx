@@ -41,6 +41,7 @@ export default function ActivityDetailPage() {
   const [notesCollapsed, setNotesCollapsed] = useState(false);
   const [joinLoading, setJoinLoading] = useState(false);
   const [statusChanging, setStatusChanging] = useState(false);
+  const [featuredSaving, setFeaturedSaving] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [noteVisible, setNoteVisible] = useState(true);
   const [noteSubmitting, setNoteSubmitting] = useState(false);
@@ -118,6 +119,21 @@ export default function ActivityDetailPage() {
       setError(e.message || '状态修改失败');
     } finally {
       setStatusChanging(false);
+    }
+  };
+
+  const toggleFeatured = async () => {
+    if (!post) return;
+    setFeaturedSaving(true);
+    setError('');
+    try {
+      const r = await api.setPostFeatured(post.id, { featured: !post.featured });
+      setPost(r.post);
+      if (r.indexed === false) setError('已标记，但知识库索引未更新（Ollama 未启动），重建后即可检索');
+    } catch (e) {
+      setError(e.message || '操作失败');
+    } finally {
+      setFeaturedSaving(false);
     }
   };
 
@@ -215,6 +231,15 @@ export default function ActivityDetailPage() {
                   <span className="act-info-status">当前状态不可报名</span>
                 )}
               </div>
+
+              {user?.role === 'admin' && post && (
+                <div className="act-info-row">
+                  <span className="act-info-label">精华</span>
+                  <button className="btn ghost" onClick={toggleFeatured} disabled={featuredSaving}>
+                    {post.featured ? '取消精华' : '设为精华'}
+                  </button>
+                </div>
+              )}
 
               {role === 'admin' && post && (
                 <div className="act-admin">

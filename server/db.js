@@ -13,6 +13,10 @@ export const db = new Database(dbPath);
 
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+// 并发加固：WAL 下降低 fsync 频率 → 写吞吐更高、延迟更低（极端断电可能丢最后一条已提交事务，但不会损坏库）。
+// busy_timeout 显式声明等待写锁的时长，避免高并发写时抛 SQLITE_BUSY（better-sqlite3 默认即 5000ms，这里显式表达意图）。
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
 
 // 统一用 ISO 字符串存时间，前端可直接 new Date() 解析
 export const nowIso = () => new Date().toISOString();
@@ -900,6 +904,44 @@ export function initDb() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE (user_id, period_start_at)
     );
+
+    -- 知识库：静态 FAQ / 规则 / 社区规范（code 幂等，绝不覆盖）
+    CREATE TABLE IF NOT EXISTS knowledge_docs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      code       TEXT    NOT NULL UNIQUE,
+      title      TEXT    NOT NULL,
+      content    TEXT    NOT NULL,
+      category   TEXT    NOT NULL DEFAULT 'FAQ',   -- FAQ | 规则 | 社区规范
+      source_ref TEXT    NOT NULL DEFAULT '',      -- 出处（README#faq / TASKS.md#rules 等，供人看）
+      created_at TEXT    NOT NULL
+    );
+
+    -- 知识库：文本块 + 向量（embedding 为 JSON 数字数组，查询时内存暴力余弦）
+    CREATE TABLE IF NOT EXISTS knowledge_chunks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_type TEXT    NOT NULL,                -- 'doc' | 'post'
+      source_ref  INTEGER NOT NULL,                -- knowledge_docs.id 或 posts.id
+      title       TEXT    NOT NULL,                -- 冗余标题，引用时自足
+      chunk_index INTEGER NOT NULL,
+      text        TEXT    NOT NULL,
+      boost       INTEGER NOT NULL DEFAULT 0,      -- 精华帖检索加权（1=精华）
+      embedding   TEXT,                            -- JSON.stringify(number[])
+      created_at  TEXT    NOT NULL,
+      UNIQUE (source_type, source_ref, chunk_index)
+    );
+    CREATE INDEX IF NOT EXISTS idx_kchunks_source ON knowledge_chunks(source_type, source_ref);
+
+    -- 助手问答历史（独立存储，绝不写入统一 messages 表）
+    CREATE TABLE IF NOT EXISTS bot_messages (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL,
+      question   TEXT    NOT NULL,
+      answer     TEXT    NOT NULL,
+      sources    TEXT    NOT NULL DEFAULT '[]',    -- JSON：{ title, snippet, sourceType, sourceRef }[]
+      created_at TEXT    NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_botmsg_user ON bot_messages(user_id, id DESC);
   `);
 
   // 迁移：老库补 hidden 列（世界频道使用隐藏区域承载）
@@ -936,6 +978,15 @@ export function initDb() {
   const postCols = db.prepare('PRAGMA table_info(posts)').all().map((c) => c.name);
   if (!postCols.includes('status')) {
     db.exec("ALTER TABLE posts ADD COLUMN status TEXT NOT NULL DEFAULT 'open';");
+  }
+  // 迁移：posts 补 featured 列（精华帖 → 知识库）
+  if (!postCols.includes('featured')) {
+    db.exec('ALTER TABLE posts ADD COLUMN featured INTEGER NOT NULL DEFAULT 0;');
+  }
+  // 迁移：knowledge_chunks 补 boost 列（精华帖检索加权）
+  const chunkCols = db.prepare('PRAGMA table_info(knowledge_chunks)').all().map((c) => c.name);
+  if (!chunkCols.includes('boost')) {
+    db.exec('ALTER TABLE knowledge_chunks ADD COLUMN boost INTEGER NOT NULL DEFAULT 0;');
   }
 
   // 迁移：users 补 password_hash / role（登录 + 角色）
@@ -1021,5 +1072,17 @@ export function initDb() {
   db.exec('DROP TABLE IF EXISTS user_exp;');
   db.exec('DROP TABLE IF EXISTS exp_categories;');
   db.exec('DROP TABLE IF EXISTS todos;');
+
+  // ===== 性能索引（messages 热点查询）=====
+  // 发消息时每条都会跑几个 COUNT：近 60 秒发言数 / 世界频道首次发言 / 会话消息列表。
+  // 原表只有主键，这些 COUNT 会全表扫描；消息量大时 P95 直接爆，这里补上覆盖索引。
+  // 1) 近 60 秒发言统计：WHERE user_id = ? AND created_at >= ?
+  // 2) 会话消息列表与已读回填：WHERE conversation_type = ? AND conversation_id = ? ORDER BY id
+  // 3) 世界频道“该用户首次发言”计数：WHERE conversation_type = 'chat' AND conversation_id = ? AND user_id = ?
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_messages_user_created ON messages(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_messages_conv_id      ON messages(conversation_type, conversation_id, id);
+    CREATE INDEX IF NOT EXISTS idx_messages_conv_user    ON messages(conversation_type, conversation_id, user_id);
+  `);
 
 }

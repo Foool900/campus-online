@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
+import { useTheme } from '../ThemeContext.jsx';
 
 // ===== 世界与视差参数 =====
 const W = 2400;
@@ -49,6 +50,15 @@ function priorityOf(area) {
   if (cat === '院系') return 2;
   return 3;
 }
+// 白昼：地点分类 → 等距磁贴配色（顶面/左面/右面三档粉彩）+ 分类 glyph
+const DAYLIGHT_TILES = {
+  '院系': { top: '#e4e8fc', left: '#c9d1f6', right: '#d7dcfa', glyph: '🎓' },
+  '地标': { top: '#d8f5e8', left: '#a9e0c6', right: '#c2ebd7', glyph: '🏛️' },
+  '礼堂': { top: '#fde3ea', left: '#f4b8cc', right: '#f9d0dd', glyph: '🎭' },
+  '学生公寓': { top: '#dcf0fc', left: '#a8d6f0', right: '#c4e3f6', glyph: '🏠' },
+};
+const DAYLIGHT_TILE_DEFAULT = { top: '#d8f5e8', left: '#a9e0c6', right: '#c2ebd7', glyph: '📍' };
+
 function polyPoints(cx, cy, r, n, rotDeg = 0) {
   const pts = [];
   for (let i = 0; i < n; i++) {
@@ -135,6 +145,8 @@ function scatterPos(area) {
 }
 
 export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
+  const { theme } = useTheme();
+  const isDaylight = theme === 'daylight';
   const viewportRef = useRef(null);
   const gRefs = [useRef(null), useRef(null), useRef(null)];
   const gridCoarseRef = useRef(null);
@@ -515,6 +527,44 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
     }
   };
 
+  const renderDaylightNode = (area) => {
+    const p = scatterPos(area);
+    const tile = DAYLIGHT_TILES[categoryOf(area)] || DAYLIGHT_TILE_DEFAULT;
+    const w = 20, h = 10, d = 8;
+    const cx = p.x, cy = p.y;
+    const top = `${cx},${cy - h} ${cx + w},${cy} ${cx},${cy + h} ${cx - w},${cy}`;
+    const left = `${cx - w},${cy} ${cx},${cy + h} ${cx},${cy + h + d} ${cx - w},${cy + d}`;
+    const right = `${cx},${cy + h} ${cx + w},${cy} ${cx + w},${cy + d} ${cx},${cy + h + d}`;
+    return (
+      <g
+        key={area.id}
+        ref={(el) => {
+          if (el) nodeRefs.current.set(area.id, el);
+          else nodeRefs.current.delete(area.id);
+        }}
+        className={'node tile-node' + (selectedAreaId === area.id ? ' selected' : '')}
+        onClick={() => {
+          onSelectArea(area);
+          if (achRef.current.lastNode === area.id) achRef.current.nodeCount++;
+          else {
+            achRef.current.lastNode = area.id;
+            achRef.current.nodeCount = 1;
+          }
+          if (achRef.current.nodeCount >= 5) fireAch('EXP_003');
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onMouseEnter={() => setHoveredId(area.id)}
+        onMouseLeave={() => setHoveredId(null)}
+      >
+        <polygon className="tile-left" points={left} fill={tile.left} />
+        <polygon className="tile-right" points={right} fill={tile.right} />
+        <polygon className="tile-top" points={top} fill={tile.top} stroke="rgba(255,255,255,0.5)" strokeWidth="1" strokeLinejoin="round" />
+        <text className="tile-glyph" x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={15}>{tile.glyph}</text>
+      </g>
+    );
+  };
+
   const renderNode = (area) => {
     const p = scatterPos(area);
     const shape = shapeOf(area);
@@ -579,21 +629,23 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchEnd}
     >
-      {/* L0 星尘 + 星云噪点 */}
-      <svg className="map-layer" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice">
-        <defs>
-          <filter id="nebula">
-            <feTurbulence type="fractalNoise" baseFrequency="0.008" numOctaves="4" seed="7" stitchTiles="stitch" />
-            <feColorMatrix type="saturate" values="0" />
-          </filter>
-        </defs>
-        <g ref={gRefs[0]}>
-          <rect x={X0} y={Y0} width={X1 - X0} height={Y1 - Y0} filter="url(#nebula)" opacity="0.05" />
-          {STARS.map((s, i) => (
-            <circle key={i} cx={s.x} cy={s.y} r={s.r} fill={s.c} opacity={s.o} />
-          ))}
-        </g>
-      </svg>
+      {/* L0 星尘 + 星云噪点（仅夜航） */}
+      {!isDaylight && (
+        <svg className="map-layer" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <filter id="nebula">
+              <feTurbulence type="fractalNoise" baseFrequency="0.008" numOctaves="4" seed="7" stitchTiles="stitch" />
+              <feColorMatrix type="saturate" values="0" />
+            </filter>
+          </defs>
+          <g ref={gRefs[0]}>
+            <rect x={X0} y={Y0} width={X1 - X0} height={Y1 - Y0} filter="url(#nebula)" opacity="0.05" />
+            {STARS.map((s, i) => (
+              <circle key={i} cx={s.x} cy={s.y} r={s.r} fill={s.c} opacity={s.o} />
+            ))}
+          </g>
+        </svg>
+      )}
 
       {/* L1 网格 + 雷达等高线 */}
       <svg className="map-layer" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice">
@@ -616,22 +668,26 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
               )
             )}
           </g>
-          <g className="contour-group">
-            {CONTOURS.map((r) => (
-              <circle key={r} className="contour" cx={W / 2} cy={H / 2} r={r} />
-            ))}
-          </g>
+          {!isDaylight && (
+            <g className="contour-group">
+              {CONTOURS.map((r) => (
+                <circle key={r} className="contour" cx={W / 2} cy={H / 2} r={r} />
+              ))}
+            </g>
+          )}
         </g>
       </svg>
 
       {/* L2 星座网 + 聚合标记 + 节点 + 标签 */}
       <svg className="map-layer" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice">
         <g ref={gRefs[2]}>
-          <g className="constellation">
-            {constellation.map((e, i) => (
-              <line key={i} className="constellation-line" x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} />
-            ))}
-          </g>
+          {!isDaylight && (
+            <g className="constellation">
+              {constellation.map((e, i) => (
+                <line key={i} className="constellation-line" x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} />
+              ))}
+            </g>
+          )}
 
           {/* 聚合标记池 */}
           {Array.from({ length: CLUSTER_POOL }).map((_, i) => (
@@ -682,12 +738,12 @@ export default function MapEngine({ areas, selectedAreaId, onSelectArea }) {
                 textAnchor="middle"
                 fontSize={15}
               >
-                {'[ ' + area.name + ' ]'}
+                {isDaylight ? area.name : '[ ' + area.name + ' ]'}
               </text>
             );
           })}
 
-          {areas.map(renderNode)}
+          {areas.map((area) => (isDaylight ? renderDaylightNode(area) : renderNode(area)))}
         </g>
       </svg>
 

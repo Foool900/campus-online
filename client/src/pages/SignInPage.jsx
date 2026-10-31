@@ -65,9 +65,9 @@ export default function SignInPage() {
                   textAlign: 'center',
                   padding: '10px 4px',
                   borderRadius: 10,
-                  border: '1px solid rgba(255,255,255,.14)',
-                  background: d.signed ? 'rgba(143,211,255,.15)' : 'transparent',
-                  color: d.signed ? '#8fd3ff' : 'var(--muted, #888)',
+                  border: '1px solid var(--glass-line)',
+                  background: d.signed ? 'var(--accent-info-soft)' : 'transparent',
+                  color: d.signed ? 'var(--accent-info)' : 'var(--muted)',
                 }}
               >
                 <div style={{ fontSize: 11, opacity: 0.7 }}>{d.weekday}</div>

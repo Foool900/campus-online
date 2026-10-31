@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { api } from '../api.js';
 import { socket } from '../socket.js';
+import { useTheme } from '../ThemeContext.jsx';
+
+// 夜航用 [ 名称 ] 的终端风括号，白昼显示干净名称
+const bracket = (theme, text) => (theme === 'daylight' ? text : '[ ' + text + ' ]');
 
 // 极简 SVG 线框图标（16×16，继承 currentColor）
 const ICONS = {
@@ -92,6 +96,12 @@ const ICONS = {
       <path d="M5.5 6h2M8.5 6h2M6.5 8.5h3" />
     </>
   ),
+  bot: (
+    <>
+      <rect x="3" y="6" width="10" height="7" rx="1.6" />
+      <path d="M8 6V3M6.5 9.2h.01M9.5 9.2h.01M5 11h6" />
+    </>
+  ),
 };
 
 function HudIcon({ name }) {
@@ -114,10 +124,11 @@ function HudIcon({ name }) {
 }
 
 export function TopCenter({ activeCampus, editing, onToggleEdit }) {
+  const { theme } = useTheme();
   return (
     <div className="absolute" style={{ top: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}>
       <div className="topcenter">
-        <span className="tc-title">[ {activeCampus?.name || 'LOADING…'} ]</span>
+        <span className="tc-title">{bracket(theme, activeCampus?.name || 'LOADING…')}</span>
         <button className="hud-btn" style={{ minHeight: 30, padding: '0 10px' }} onClick={onToggleEdit}>
           {editing ? 'DONE' : 'EDIT'}
         </button>
@@ -127,6 +138,7 @@ export function TopCenter({ activeCampus, editing, onToggleEdit }) {
 }
 
 export function TopLeft({ campuses, campusId, onSwitchMap, onSwitchWorld }) {
+  const { theme } = useTheme();
   const active = campuses.find((c) => c.id === campusId);
   return (
     <div className="absolute" style={{ top: 16, left: 16, zIndex: 20, width: 150 }}>
@@ -140,7 +152,7 @@ export function TopLeft({ campuses, campusId, onSwitchMap, onSwitchWorld }) {
           <div className="mm-view" />
           <div className="mm-dot" />
         </div>
-        <div className="minimap-label">[ {active?.name || 'MAP'} ]</div>
+        <div className="minimap-label">{bracket(theme, active?.name || 'MAP')}</div>
       </div>
       <div className="minimap-btns">
         <button className="hud-btn" onClick={onSwitchMap}><HudIcon name="map" />换地图</button>
@@ -174,7 +186,7 @@ export function TopRight({ user, onProfile, onAchievements, onLeaderboard, onFri
       <button
         className="hud-btn"
         onClick={onInformationHall}
-        style={{ alignSelf: 'flex-start', color: '#8fd3ff', borderColor: 'rgba(143,211,255,0.4)' }}
+        style={{ alignSelf: 'flex-start', color: 'var(--accent-info)', borderColor: 'var(--accent-info-soft)' }}
       >
         <HudIcon name="hall" />Horizon
       </button>
@@ -224,11 +236,13 @@ export function GuideArrow() {
   );
 }
 
-export function QuickBar({ activeCampus, onTasks, onBag, onSettings, onSignin, onMarket, onStory, onCharacter }) {
+export function QuickBar({ activeCampus, onTasks, onBag, onSettings, onSignin, onMarket, onStory, onCharacter, onBot }) {
+  const { theme } = useTheme();
   return (
     <div className="absolute" style={{ top: 16, left: 180, zIndex: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div className="quickbar-label">[ {activeCampus?.name || ''} ]</div>
+      <div className="quickbar-label">{bracket(theme, activeCampus?.name || '')}</div>
       <div className="tr-btns" style={{ display: 'flex', gap: 8 }}>
+        <button className="hud-btn" onClick={onBot}><HudIcon name="bot" />Ala</button>
         <button className="hud-btn" onClick={onTasks}><HudIcon name="task" />任务</button>
         <button className="hud-btn" onClick={onStory}><HudIcon name="story" />剧情</button>
         <button className="hud-btn" onClick={onCharacter}><HudIcon name="character" />形象</button>

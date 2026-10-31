@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Campus Online · 河南大学</title>
+    <script>
+      // 在 JS bundle 加载前预置主题，避免首屏闪错色
+      try {
+        var __t = localStorage.getItem('theme');
+        document.documentElement.setAttribute('data-theme', __t === 'daylight' ? 'daylight' : 'night');
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'night');
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

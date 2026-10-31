@@ -1,5 +1,8 @@
 import { db, nowIso } from './db.js';
 import { grantStarterPack } from './inventory.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const CAMPUSES = [
   { name: '明伦校区', slug: 'minglun' },
@@ -408,4 +411,100 @@ export function ensureStories() {
       insNode.run(storyId, n.seq, n.title, n.description, n.checkinType || 'none', n.tips || '', now);
     }
   }
+}
+
+// 知识库静态种子：FAQ / 规则 / 社区规范（供离线知识库助手检索回答）
+const KNOWLEDGE_DOCS = [
+  {
+    code: 'faq-port',
+    category: 'FAQ',
+    title: '端口被占用怎么办',
+    source_ref: 'README#faq',
+    content: `后端默认端口 3001，前端开发端口 5173。端口被占用时：Windows 下用 netstat -ano | findstr 3001 查看占用进程，再用 taskkill /F /PID <PID> 结束进程。也可以修改 server/index.js 里的后端端口，或 client/vite.config.js 里的前端端口，并同步更新代理 target。`,
+  },
+  {
+    code: 'faq-sqlite',
+    category: 'FAQ',
+    title: 'better-sqlite3 安装失败',
+    source_ref: 'README#faq',
+    content: `better-sqlite3 是原生模块，一般会下载预编译二进制。若安装报编译错误：1. 确保 Node 版本 >= 22；2. 安装 Windows 构建工具（npm install -g windows-build-tools）；3. 手动指定匹配版本（cd server && npm install better-sqlite3@13）。`,
+  },
+  {
+    code: 'faq-reset-db',
+    category: 'FAQ',
+    title: '如何重置数据库',
+    source_ref: 'README#faq',
+    content: `直接删除数据库文件即可，下次启动会自动重新建表并写入种子数据。命令：rm -f server/data/campus.db server/data/campus.db-wal server/data/campus.db-shm。`,
+  },
+  {
+    code: 'faq-account',
+    category: 'FAQ',
+    title: '账号与登录（昵称即用户名）',
+    source_ref: 'README#faq',
+    content: `昵称即用户名，全局唯一（不区分大小写）。启动后在登录框输入昵称和密码；新昵称首次登录即注册创建账号。登录态保存在浏览器 localStorage 的 campus_token 键，30 天内有效。想换新账号：清除 localStorage 的 campus_token 并重置数据库。`,
+  },
+  {
+    code: 'rule-task',
+    category: '规则',
+    title: '任务系统规则',
+    source_ref: 'TASKS.md#rules',
+    content: `任务分私密备忘与公开任务。私密备忘：todo 待办 → done 已完成（可撤销），奖励恒为 0。公开任务：published 发布 → accepted 接取 → submitted 提交 → approved 验收通过；驳回回到 accepted 可重新提交，累计驳回 3 次则 terminated 终止并退回金币；到期无人接或未验收则 expired 过期退回金币；发布者取消则 cancelled 取消退回金币。金币：发布公开任务时冻结金币作为赏金，验收通过后转给接取者，取消/过期/终止退回发布者。经验只发不扣，完成私密备忘与验收通过公开任务都会获得经验（行为经验，每日上限 300）。等级 = 经验/100 向下取整再加 1。`,
+  },
+  {
+    code: 'rule-market',
+    category: '规则',
+    title: '校园夜市规则',
+    source_ref: 'MarketHelp#rules',
+    content: `报名：开市前 60～5 分钟；开市持续 4 小时。流动地摊 30 个，摆摊 30 分钟，押金 5 金币（可退），上架 3 件。固定店铺 5 家，每周竞拍，上架 20 件，租金 50% 进奖池。交易手续费为成交价 5%，进奖池。砍价需低于标价，卖家接受后 24 小时内支付。盲盒上架冻结 80% 保证金，保底 10% 标价，开盒后 24 小时举报期。全服喇叭每期每人 3 条。纠纷举报每月 3 次配额。评价：成交后 30 天内评 1-5 星，影响卖家信誉。`,
+  },
+  {
+    code: 'norm-community',
+    category: '社区规范',
+    title: '社区发言与角色规范',
+    source_ref: '社区规范',
+    content: `请文明发言、尊重他人，不发布违法、低俗、广告或人身攻击内容。聊天内容仅做基础过滤（空消息拦截、长度限制、前端安全渲染），请自觉遵守。发现违规可在相关功能里举报（如夜市纠纷举报，每月 3 次配额）。用户角色：member 普通成员 → student 认证学员（管理员审核认证后授予）→ admin 管理员；大部分发帖、发消息需要 student 及以上角色。管理员由系统启动时根据 ADMIN_NICKNAME 环境变量（默认 FOolish）自动创建。`,
+  },
+];
+
+// 幂等：确保知识库静态文档存在（按 code 判重，绝不覆盖已存在内容）
+export function ensureKnowledgeDocs() {
+  const ins = db.prepare(
+    'INSERT INTO knowledge_docs (code, title, content, category, source_ref, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(code) DO NOTHING'
+  );
+  for (const d of KNOWLEDGE_DOCS) {
+    ins.run(d.code, d.title, d.content, d.category, d.source_ref, nowIso());
+  }
+}
+
+// 项目根目录：把仓库里的文档读进知识库（供知识库助手「Ala」回答网站相关问题）
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+const DOC_SOURCES = [
+  { code: 'doc:readme', file: 'README.md', title: '平台功能与使用指南' },
+  { code: 'doc:tasks', file: 'TASKS.md', title: '任务系统规则' },
+  { code: 'doc:economy', file: 'ECONOMY.md', title: '经验与金币经济说明' },
+  { code: 'doc:story', file: 'STORY.md', title: '剧情系统说明' },
+  { code: 'doc:deploy', file: 'DEPLOY.md', title: '部署指南' },
+  { code: 'doc:usage', file: '使用情况材料.md', title: '平台使用场景与概览' },
+  { code: 'doc:henu', file: '河南大学.md', title: '河南大学校园知识' },
+];
+
+// 每次启动按文件内容 upsert（文档改了自动同步进知识库）
+export function ensureDocKnowledge() {
+  const upsert = db.prepare(
+    `INSERT INTO knowledge_docs (code, title, content, category, source_ref, created_at)
+     VALUES (?, ?, ?, '文档', ?, ?)
+     ON CONFLICT(code) DO UPDATE SET title = excluded.title, content = excluded.content, source_ref = excluded.source_ref`
+  );
+  let count = 0;
+  for (const d of DOC_SOURCES) {
+    try {
+      const content = fs.readFileSync(path.join(REPO_ROOT, d.file), 'utf8');
+      upsert.run(d.code, d.title, content, d.file, nowIso());
+      count += 1;
+    } catch (e) {
+      console.warn(`[seed] 读取文档 ${d.file} 失败：`, e.message);
+    }
+  }
+  return count;
 }

@@ -1,0 +1,97 @@
+/* 知识库助手（/bot）—— 居中玻璃面板内的聊天界面，只复用主题 token */
+
+.bot-page {
+  display: flex;
+  flex-direction: column;
+  height: min(70vh, 640px);
+}
+
+.bot-head { margin-bottom: 10px; }
+
+.bot-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.bot-online { color: #7fe0b0; }
+.bot-offline { color: var(--danger); }
+.bot-rebuild { margin-left: auto; }
+
+.bot-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 2px;
+}
+.bot-messages::-webkit-scrollbar { width: 6px; }
+.bot-messages::-webkit-scrollbar-thumb { background: rgba(150, 200, 255, 0.25); border-radius: 3px; }
+
+.bot-msg {
+  max-width: 88%;
+  padding: 8px 11px;
+  border: 1px solid var(--glass-line);
+  background: var(--overlay-dim);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  align-self: flex-start;
+}
+.bot-msg.user {
+  align-self: flex-end;
+  border-color: var(--accent-info-soft);
+}
+.bot-msg-role {
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--accent-info);
+  margin-bottom: 2px;
+}
+.bot-msg.user .bot-msg-role { color: var(--gold); }
+.bot-msg-text { white-space: pre-wrap; word-break: break-word; color: var(--text); }
+.bot-thinking { color: var(--muted); animation: botPulse 1s ease-in-out infinite; }
+@keyframes botPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+.bot-sources { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+.bot-source {
+  display: inline-flex;
+  font-size: 11px;
+  color: var(--accent-info);
+  border: 1px solid var(--accent-info-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+a.bot-source:hover { background: var(--accent-info-soft); color: var(--text); }
+
+.bot-input {
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid var(--glass-line);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.bot-input input {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 4px;
+  border: 1px solid var(--glass-line);
+  background: var(--overlay-dim);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.bot-input input:focus { border-color: var(--accent-info); }
+.bot-input input:disabled { opacity: 0.6; }
+.bot-input .hud-btn { flex-shrink: 0; }
+.bot-web-toggle { font-size: 11px; padding: 0 8px; white-space: nowrap; }

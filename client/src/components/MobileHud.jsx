@@ -86,7 +86,7 @@ function LeaderboardMini({ onOpen, limit = 5 }) {
 }
 
 // 竖屏右侧统一侧边栏：用户学习 → 用户排名表 → 背包 → 任务设置
-function Sidebar({ user, onProfile, onAchievements, onLeaderboard, onTasks, onBag, onSettings, onStory, onCharacter }) {
+function Sidebar({ user, onProfile, onAchievements, onLeaderboard, onTasks, onBag, onSettings, onStory, onCharacter, onBot }) {
   return (
     <div className="m-sidebar">
       <div className="hud-panel m-user-card">
@@ -114,6 +114,10 @@ function Sidebar({ user, onProfile, onAchievements, onLeaderboard, onTasks, onBa
 
       <button type="button" className="hud-btn m-side-btn" onClick={onCharacter} title="形象" aria-label="形象">
         🧍 形象
+      </button>
+
+      <button type="button" className="hud-btn m-side-btn" onClick={onBot} title="Ala" aria-label="Ala">
+        🤖 Ala
       </button>
 
       <div className="m-side-row">
@@ -216,6 +220,7 @@ export default function MobileHud({
   onAchievements,
   onStory,
   onCharacter,
+  onBot,
 }) {
   const slug = activeCampus?.slug || 'minglun';
   const [panelCollapsed, setPanelCollapsed] = useState(false);
@@ -237,6 +242,7 @@ export default function MobileHud({
         onSettings={onSettings}
         onStory={onStory}
         onCharacter={onCharacter}
+        onBot={onBot}
       />
       <button type="button" className="gacha-btn m-gacha-btn" onClick={onGacha} title="卡池 · 召唤">
         <span>✨</span>
