@@ -1,0 +1,54 @@
+name: Build Android APK
+
+# 云端构建 Android 调试包：本地无需装 Android SDK / JDK。
+# 触发方式：手动（Actions → Build Android APK → Run workflow），
+#          或 push 到 main 且改动了 client/ 或本 workflow。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'client/**'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # JDK 17：compileSdk/targetSdk 36 需要
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Android SDK（含 license 接受）
+      - uses: android-actions/setup-android@v3
+
+      # 只装前端依赖（不碰 server 的 better-sqlite3）
+      - name: Install client deps
+        working-directory: client
+        run: npm install
+
+      # vite build --mode apk 读取 .env.apk（API 指向公网）+ cap sync 拷贝资源到 android
+      - name: Build web assets (apk mode) + sync android
+        working-directory: client
+        run: npm run build:apk
+
+      - name: Grant gradlew exec + build debug APK
+        working-directory: client/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-online-debug-apk
+          path: client/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

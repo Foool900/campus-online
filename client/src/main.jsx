@@ -12,6 +12,7 @@ import './story.css';
 import './gacha.css';
 import './bot.css';
 import './daylight.css';
+import './app.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

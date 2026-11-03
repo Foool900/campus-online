@@ -8,7 +8,8 @@ import MapEngine from './MapEngine.jsx';
 import AreaDialog from './AreaDialog.jsx';
 import HudOverlay from './HudOverlay.jsx';
 import WorldChat from './WorldChat.jsx';
-import MobileHud from './MobileHud.jsx';
+import MobileAppShell from './MobileAppShell.jsx';
+import useMapData from '../hooks/useMapData.js';
 import {
   TopCenter,
   TopLeft,
@@ -33,69 +34,15 @@ function useIsMobile(query = '(max-width: 932px)') {
   return matches;
 }
 
-// 物理方向：竖屏（宽 < 高）用于「请旋转」遮罩与横屏 HUD 启停
-function useIsPortrait() {
-  const [portrait, setPortrait] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < window.innerHeight : false
-  );
-  useEffect(() => {
-    const onResize = () => setPortrait(window.innerWidth < window.innerHeight);
-    window.addEventListener('resize', onResize);
-    window.addEventListener('orientationchange', onResize);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('orientationchange', onResize);
-    };
-  }, []);
-  return portrait;
-}
-
-// 尝试锁定横屏（不支持 / 无权限时静默失败；物理旋转仍由系统控制）
-function tryLockLandscape() {
-  try {
-    if (typeof screen === 'undefined' || !screen.orientation) return;
-    const lock = screen.orientation.lock;
-    if (typeof lock !== 'function') return;
-    const r = lock.call(screen.orientation, 'landscape');
-    if (r && typeof r.catch === 'function') r.catch(() => {});
-  } catch {
-    /* 静默失败 */
-  }
-}
-
-// 游戏 HUD 外壳：全屏地图引擎常驻，四周悬浮面板，页面以覆盖式玻璃面板承载
+// 游戏 HUD 外壳：桌面端全屏地图引擎 + 悬浮面板 + 覆盖式页面；
+// 手机端切到 MobileAppShell（底部 Tab 导航 + 全屏页面）。
 export default function Layout({ children }) {
   const { user } = useUser();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 手机适配：默认横屏 HUD；横 / 竖屏布局由小地图按钮手动切换（不改变物理旋转）
   const isMobile = useIsMobile();
-  const isPhysicalPortrait = useIsPortrait();
-  const [mode, setMode] = useState('landscape');
-  const [chatCollapsed, setChatCollapsed] = useState(true);
-  const toggleMode = () => {
-    const next = mode === 'portrait' ? 'landscape' : 'portrait';
-    setMode(next);
-    if (next === 'landscape') tryLockLandscape();
-  };
-  const enterPortrait = () => setMode('portrait');
-
-  // 竖屏遮罩：横屏模式下手机仍竖屏时，提示旋转（切到竖屏布局或旋转后消失）
-  const showMask = isMobile && mode === 'landscape' && isPhysicalPortrait;
-
-  // 进入手机端时尝试锁定横屏（无用户手势时可能失败，静默）
-  useEffect(() => {
-    if (isMobile) tryLockLandscape();
-  }, [isMobile]);
-
-  // 地图数据
-  const [campuses, setCampuses] = useState([]);
-  const [campusId, setCampusId] = useState(null);
-  const [areas, setAreas] = useState([]);
-  const [selectedArea, setSelectedArea] = useState(null);
-  const [editing, setEditing] = useState(false); // 编辑标记（拖拽节点在后续阶段接入）
-  const [error, setError] = useState('');
+  const map = useMapData();
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -144,37 +91,15 @@ export default function Layout({ children }) {
     api.trackPageOpen(page).catch(() => {});
   }, [location.pathname, user?.id]);
 
-  useEffect(() => {
-    api
-      .campuses()
-      .then((cs) => {
-        setCampuses(cs);
-        if (cs.length) setCampusId(cs[0].id);
-      })
-      .catch((e) => setError(e.message));
-  }, []);
-
-  useEffect(() => {
-    if (!campusId) return;
-    setAreas([]);
-    setSelectedArea(null);
-    api
-      .areas(campusId)
-      .then(setAreas)
-      .catch((e) => setError(e.message));
-  }, [campusId]);
-
-  const activeCampus = campuses.find((c) => c.id === campusId);
-
   // HUD 动作
   const switchMap = () => {
-    if (campuses.length < 2) {
+    if (map.campuses.length < 2) {
       say('只有一个校区');
       return;
     }
-    const idx = campuses.findIndex((c) => c.id === campusId);
-    const next = campuses[(idx + 1) % campuses.length];
-    setCampusId(next.id);
+    const idx = map.campuses.findIndex((c) => c.id === map.campusId);
+    const next = map.campuses[(idx + 1) % map.campuses.length];
+    map.setCampusId(next.id);
     say(`已切换地图：${next.name}`);
   };
   const switchWorld = () => say('「换世界观」还未开发');
@@ -182,41 +107,24 @@ export default function Layout({ children }) {
 
   return (
     <div className="hud-root">
-      {/* 全屏地图引擎：三层视差 + 惯性缩放平移 + 以鼠标为锚点 */}
-      <MapEngine
-        key={campusId}
-        areas={areas}
-        selectedAreaId={selectedArea?.id}
-        onSelectArea={setSelectedArea}
-      />
-      <div className="map-vignette" />
-
-      {/* HUD 悬浮面板 */}
       {isMobile ? (
-        <MobileHud
-          mode={mode}
-          activeCampus={activeCampus}
-          user={user}
-          editing={editing}
-          onToggleMode={toggleMode}
-          onSwitchMap={switchMap}
-          onSwitchWorld={switchWorld}
-          onToggleEdit={() => setEditing((v) => !v)}
-          onGacha={gacha}
-          onTasks={() => navigate('/tasks')}
-          onBag={() => navigate('/bag')}
-          onSettings={() => navigate('/settings')}
-          onProfile={() => navigate('/profile')}
-          onLeaderboard={() => navigate('/leaderboard')}
-          onAchievements={() => navigate('/profile?tab=achievements')}
-          onStory={() => navigate('/story')}
-          onCharacter={() => navigate('/character')}
-          onBot={() => navigate('/bot')}
-        />
+        <MobileAppShell map={map} onSwitchMap={switchMap} onSwitchWorld={switchWorld} onGacha={gacha}>
+          {children}
+        </MobileAppShell>
       ) : (
         <>
-          <TopCenter activeCampus={activeCampus} editing={editing} onToggleEdit={() => setEditing((v) => !v)} />
-          <TopLeft campuses={campuses} campusId={campusId} onSwitchMap={switchMap} onSwitchWorld={switchWorld} />
+          {/* 全屏地图引擎：三层视差 + 惯性缩放平移 + 以鼠标为锚点 */}
+          <MapEngine
+            key={map.campusId}
+            areas={map.areas}
+            selectedAreaId={map.selectedArea?.id}
+            onSelectArea={map.setSelectedArea}
+          />
+          <div className="map-vignette" />
+
+          {/* HUD 悬浮面板 */}
+          <TopCenter activeCampus={map.activeCampus} editing={map.editing} onToggleEdit={() => map.setEditing((v) => !v)} />
+          <TopLeft campuses={map.campuses} campusId={map.campusId} onSwitchMap={switchMap} onSwitchWorld={switchWorld} />
           <TopRight
             user={user}
             onProfile={() => navigate('/profile')}
@@ -228,7 +136,7 @@ export default function Layout({ children }) {
           <GuideArrow />
           <Gacha onGacha={gacha} />
           <QuickBar
-            activeCampus={activeCampus}
+            activeCampus={map.activeCampus}
             onTasks={() => navigate('/tasks')}
             onSignin={() => navigate('/signin')}
             onMarket={() => navigate('/market')}
@@ -238,46 +146,25 @@ export default function Layout({ children }) {
             onCharacter={() => navigate('/character')}
             onBot={() => navigate('/bot')}
           />
+
+          {/* 世界频道：桌面左下角 */}
+          <div className="world-chat-wrap">
+            <WorldChat />
+          </div>
+
+          {/* 覆盖式页面（任务/排行榜/成就/我的） */}
+          <HudOverlay>{children}</HudOverlay>
+
+          {/* 区域详情（点地图标记弹出） */}
+          {map.selectedArea && <AreaDialog area={map.selectedArea} onClose={() => map.setSelectedArea(null)} />}
         </>
       )}
 
-      {/* 世界频道：桌面居中、竖屏左下角、横屏左下角可折叠 */}
-      <div
-        className={
-          'world-chat-wrap' +
-          (isMobile && mode === 'portrait' ? ' portrait' : '') +
-          (isMobile && mode === 'landscape' ? ' landscape' : '')
-        }
-      >
-        <WorldChat
-          collapsible={isMobile && mode === 'landscape' && !isPhysicalPortrait}
-          collapsed={chatCollapsed}
-          onToggleCollapse={() => setChatCollapsed((v) => !v)}
-        />
-      </div>
-
-      {/* 覆盖式页面（任务/排行榜/成就/我的） */}
-      <HudOverlay>{children}</HudOverlay>
-
-      {/* 区域详情（点地图标记弹出） */}
-      {selectedArea && <AreaDialog area={selectedArea} onClose={() => setSelectedArea(null)} />}
-
       {/* Toast / 错误 */}
       {toast && <div className="toast">{toast}</div>}
-      {error && (
+      {map.error && (
         <div className="toast error">
-          {error}
-        </div>
-      )}
-
-      {/* 竖屏遮罩：横屏模式下手机仍竖屏时提示旋转（切到竖屏布局或旋转后消失） */}
-      {showMask && (
-        <div className="portrait-mask">
-          <div className="portrait-mask-icon">📱</div>
-          <div className="portrait-mask-text">请旋转至横屏以获得最佳游戏体验</div>
-          <button type="button" className="hud-btn portrait-mask-btn" onClick={enterPortrait}>
-            进入竖屏布局
-          </button>
+          {map.error}
         </div>
       )}
     </div>

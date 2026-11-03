@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Campus Online</string>
+    <string name="title_activity_main">Campus Online</string>
+    <string name="package_name">com.henu.campusonline</string>
+    <string name="custom_url_scheme">com.henu.campusonline</string>
+</resources>

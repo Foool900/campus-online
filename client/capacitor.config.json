@@ -1,0 +1,12 @@
+{
+  "appId": "com.henu.campusonline",
+  "appName": "Campus Online",
+  "webDir": "dist",
+  "server": {
+    "cleartext": true,
+    "androidScheme": "http"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

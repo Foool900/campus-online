@@ -1,9 +1,11 @@
+import { API_BASE } from './apiBase.js';
+
 // 统一封装 fetch：自动 JSON 解析、自动带 token、把后端错误信息抛给调用方
 async function request(path, options = {}) {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(API_BASE + path, { ...options, headers });
   let data = null;
   try {
     data = await res.json();
@@ -30,7 +32,7 @@ export const api = {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
     const headers = { 'Content-Type': file.type };
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch('/api/verification/upload', { method: 'POST', headers, body: file });
+    const res = await fetch(API_BASE + '/api/verification/upload', { method: 'POST', headers, body: file });
     let data = null;
     try {
       data = await res.json();
@@ -127,7 +129,7 @@ export const api = {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
     const headers = { 'Content-Type': file.type };
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(`/api/stickers?userId=${encodeURIComponent(userId)}`, {
+    const res = await fetch(`${API_BASE}/api/stickers?userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
       headers,
       body: file,
@@ -219,7 +221,7 @@ export const api = {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
     const headers = { 'Content-Type': file.type };
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch('/api/admin/achievements/icon', { method: 'POST', headers, body: file });
+    const res = await fetch(API_BASE + '/api/admin/achievements/icon', { method: 'POST', headers, body: file });
     let data = null;
     try {
       data = await res.json();
@@ -266,7 +268,7 @@ export const api = {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('campus_token') : null;
     const headers = { 'Content-Type': file.type };
     if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch('/api/stories/upload', { method: 'POST', headers, body: file });
+    const res = await fetch(API_BASE + '/api/stories/upload', { method: 'POST', headers, body: file });
     let data = null;
     try {
       data = await res.json();

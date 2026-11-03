@@ -16,6 +16,7 @@ server/data/
 .env
 .env.*
 !.env.example
+!.env.apk
 
 # logs
 *.log

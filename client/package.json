@@ -6,9 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:web": "vite build",
+    "build:apk": "vite build --mode apk && cap sync android",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.4",

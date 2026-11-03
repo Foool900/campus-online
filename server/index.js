@@ -75,6 +75,16 @@ app.set('io', io);
 
 app.use(express.json());
 
+// 跨域：供 Capacitor 原生壳（origin 为 http(s)://localhost）跨域调用 REST；
+// 不新增依赖，手写 CORS 头 + OPTIONS 预检（cors 包只是 socket.io 的传递依赖，勿依赖）
+app.use((req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.set('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 // 健康检查
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'campus-online-server', time: new Date().toISOString() });

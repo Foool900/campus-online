@@ -1,0 +1,125 @@
+/* ============================================================
+   Campus Online · 手机 App 壳（底部 Tab 导航 + 顶部标题栏）
+   在 main.jsx 最后加载，覆盖 hud.css / market.css 里针对手机端的布局。
+   颜色全部走 theme.css 的 token（--bg / --text / --surface-1 / --glass-line …）。
+   ============================================================ */
+
+.m-app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* 顶部标题栏（首页无，地图自带控件） */
+.m-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 12px;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--glass-line);
+  z-index: 30;
+}
+.m-topbar-title { font-size: 16px; font-weight: 600; white-space: nowrap; }
+.m-topbar-back {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; line-height: 1;
+  background: none; border: none; color: var(--accent-info);
+  cursor: pointer;
+}
+.m-topbar-spacer { flex: 1; }
+.m-topbar-user { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/* 内容区：相对定位 + 独立层叠上下文，页面内部的 z-index 不会盖住顶部/底部栏 */
+.m-page {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* 首页地图 */
+.m-home { position: absolute; inset: 0; }
+.m-mapbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 10px 8px;
+  z-index: 10;
+}
+.m-mapbar-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--overlay-dim);
+  border: 1px solid var(--glass-line);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.m-mapbar-btn { flex: 0 0 auto; padding: 6px 8px; }
+
+/* 世界频道（首页底部，可折叠） */
+.m-worldchat {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 12;
+  padding: 0 10px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.m-worldchat-toggle {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 0 6px auto;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: var(--card);
+  border: 1px solid var(--glass-line);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+}
+.m-worldchat .world-chat { width: 100%; max-width: none; }
+.m-worldchat .wc-messages { height: 150px; }
+
+/* 底部 Tab 栏 */
+.m-tabbar {
+  flex: 0 0 auto;
+  display: flex;
+  background: var(--surface-1);
+  border-top: 1px solid var(--glass-line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  z-index: 30;
+}
+.m-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0 6px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.m-tab-icon { font-size: 20px; line-height: 1; }
+.m-tab.active { color: var(--accent-info); }
+
+/* 手机端：把 fixed 全屏页降级为 absolute，收敛进 .m-page（不盖住 Tab 栏）；
+   页面自带的关闭按钮统一由顶部返回按钮接管 */
+@media (max-width: 932px) {
+  .m-page .fullscreen-page { position: absolute; inset: 0; z-index: 40; }
+  .m-page .activity-detail { position: absolute; inset: 0; z-index: 55; }
+  .market-close, .profile-close, .hud-overlay-close { display: none; }
+}
