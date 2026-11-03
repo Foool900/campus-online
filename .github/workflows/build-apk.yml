@@ -21,11 +21,11 @@ jobs:
         with:
           node-version: 22
 
-      # JDK 17：compileSdk/targetSdk 36 需要
+      # JDK 21：Capacitor 8 的 android 库用 Java 21 编译（JDK 17 会报 invalid source release: 21）
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       # GitHub 云主机已预装 Android SDK（$ANDROID_HOME 已设置）；
       # 只需确保许可已接受，AGP 8.13 会自动补齐缺失的 compileSdk/build-tools。
