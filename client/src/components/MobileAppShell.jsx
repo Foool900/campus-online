@@ -1,5 +1,16 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  Map as MapIcon,
+  MessageCircle,
+  ListTodo,
+  Store,
+  User,
+  RefreshCw,
+  Globe,
+  CalendarCheck,
+  Sparkles,
+} from 'lucide-react';
 import { useUser } from '../UserContext.jsx';
 import MapEngine from './MapEngine.jsx';
 import AreaDialog from './AreaDialog.jsx';
@@ -7,15 +18,15 @@ import WorldChat from './WorldChat.jsx';
 import HudOverlay from './HudOverlay.jsx';
 
 // 手机端 App 壳：底部 Tab 导航 + 全屏页面。地图降级为「首页」Tab，
-// 世界频道挂在首页底部。非首页内容复用 HudOverlay 的玻璃面板逻辑
-// （桌面 / 手机共用的全屏 / 居中面板判定与样式都已在 hud.css 里）。
+// 世界频道挂在首页底部。非首页内容复用 HudOverlay 的玻璃面板逻辑。
+// 图标统一用 Lucide 线性图标（不用 emoji）。
 
 const TABS = [
-  { key: 'home', path: '/', label: '首页', icon: '🗺️' },
-  { key: 'messages', path: '/co-online', label: '消息', icon: '💬' },
-  { key: 'tasks', path: '/tasks', label: '任务', icon: '✅' },
-  { key: 'market', path: '/market', label: '市场', icon: '🏪' },
-  { key: 'profile', path: '/profile', label: '我的', icon: '👤' },
+  { key: 'home', path: '/', label: '首页', Icon: MapIcon },
+  { key: 'messages', path: '/co-online', label: '消息', Icon: MessageCircle },
+  { key: 'tasks', path: '/tasks', label: '任务', Icon: ListTodo },
+  { key: 'market', path: '/market', label: '市场', Icon: Store },
+  { key: 'profile', path: '/profile', label: '我的', Icon: User },
 ];
 
 // 精确匹配 Tab 路由（详情页如 /task/:id、/story/:id 不属于任何 Tab）
@@ -56,15 +67,23 @@ function HomeMap({ map, onSwitchMap, onSwitchWorld, onGacha, chatOpen, setChatOp
 
       <div className="m-mapbar">
         <span className="m-mapbar-name">📍 {map.activeCampus?.name || '加载中…'}</span>
-        <button type="button" className="hud-btn m-mapbar-btn" onClick={onSwitchMap} title="换地图" aria-label="换地图">🗺️</button>
-        <button type="button" className="hud-btn warn m-mapbar-btn" onClick={onSwitchWorld} title="换世界观" aria-label="换世界观">🌍</button>
-        <button type="button" className="hud-btn m-mapbar-btn" onClick={() => navigate('/signin')} title="签到" aria-label="签到">📅</button>
-        <button type="button" className="hud-btn m-mapbar-btn" onClick={onGacha} title="卡池" aria-label="卡池">✨</button>
+        <button type="button" className="hud-btn m-mapbar-btn" onClick={onSwitchMap} title="换地图" aria-label="换地图">
+          <RefreshCw size={20} />
+        </button>
+        <button type="button" className="hud-btn warn m-mapbar-btn" onClick={onSwitchWorld} title="换世界观" aria-label="换世界观">
+          <Globe size={20} />
+        </button>
+        <button type="button" className="hud-btn m-mapbar-btn" onClick={() => navigate('/signin')} title="签到" aria-label="签到">
+          <CalendarCheck size={20} />
+        </button>
+        <button type="button" className="hud-btn m-mapbar-btn" onClick={onGacha} title="卡池" aria-label="卡池">
+          <Sparkles size={20} />
+        </button>
       </div>
 
       <div className="m-worldchat">
         <button type="button" className="m-worldchat-toggle" onClick={() => setChatOpen((v) => !v)}>
-          💬 世界频道 {chatOpen ? '▾' : '▴'}
+          <MessageCircle size={16} /> 世界频道 {chatOpen ? '▾' : '▴'}
         </button>
         {chatOpen && <WorldChat />}
       </div>
@@ -130,7 +149,7 @@ export default function MobileAppShell({ map, onSwitchMap, onSwitchWorld, onGach
               className={'m-tab' + (tabKey === t.key ? ' active' : '')}
               onClick={() => go(t.path)}
             >
-              <span className="m-tab-icon">{t.icon}</span>
+              <span className="m-tab-icon"><t.Icon size={22} strokeWidth={2} /></span>
               <span className="m-tab-label">{t.label}</span>
             </button>
           ))}

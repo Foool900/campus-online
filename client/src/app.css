@@ -261,3 +261,37 @@
   /* --- 摊位九宫格 6 列 → 3 列 --- */
   .stall-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ============================================================
+   手机端视觉规范：隐藏滚动条、卡片化、数据溢出、安全区高度
+   ============================================================ */
+@media (max-width: 932px) {
+  /* 隐藏原生滚动条（黑长直滚动条很丑） */
+  * { scrollbar-width: none; -ms-overflow-style: none; }
+  *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+  /* 顶部栏抬高，标题不压状态栏（时间/电量） */
+  .m-topbar { min-height: 56px; }
+
+  /* 卡片化统一：大圆角 */
+  .card, .mk-card, .mk-item, .mk-stat, .mk-au-card, .todo-card, .lb-row, .bag-card, .story-card, .ach-badge {
+    border-radius: 16px;
+  }
+
+  /* 卡片内边距 + 间距统一（文字不贴边、卡片不粘连） */
+  .mk-card, .mk-item, .todo-card, .bag-card, .story-card {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  /* 数据溢出兜底：超长昵称/金额/等级 用省略号，不撑破布局 */
+  .m-topbar-user, .ps-nick, .ps-level, .reward-chip, .tw-val, .lb-name, .lb-exp, .todo-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
+  /* 金额/等级大数字响应式字号，防止撑破卡片 */
+  .mk-stat-value { font-size: clamp(18px, 6vw, 28px); }
+}
