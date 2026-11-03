@@ -43,7 +43,7 @@ export default function MarketItemCard({ item, open, isStudent, userId, onChange
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
           <div className="reward-chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CoinIcon size={13} /> {item.priceCoin}</div>
           {item.sellerId !== userId && open && isStudent && (
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
               <input type="number" placeholder="砍价" value={offer} onChange={(e) => setOffer(e.target.value)} style={{ width: 80 }} />
               <button className="hud-btn" onClick={bargain}>砍价</button>
               <button className="btn primary" onClick={buy} disabled={busy}>

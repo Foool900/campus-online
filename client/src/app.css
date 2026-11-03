@@ -123,3 +123,141 @@
   .m-page .activity-detail { position: absolute; inset: 0; z-index: 55; }
   .market-close, .profile-close, .hud-overlay-close { display: none; }
 }
+
+/* 摊位九宫格：桌面 6 列，手机降为 3 列（配合 MarketStallBoard 的 .stall-grid） */
+.stall-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+
+/* ============================================================
+   手机端全站适配层：侧栏→顶部横向 Tab、单列、触控目标、安全区
+   覆盖 market/information/settings/backpack/bot/character/profile/story/gacha 的桌面布局
+   ============================================================ */
+@media (max-width: 932px) {
+  /* --- 触控目标（≥44px） --- */
+  .hud-btn { min-height: 44px; }
+  .m-tab { min-height: 48px; }
+  .m-topbar-back { width: 44px; height: 44px; font-size: 28px; }
+  .m-worldchat-toggle { min-height: 40px; font-size: 13px; }
+
+  /* --- 地图首页控件：加大 + 安全区 + 半透明底，避免贴顶点不到 --- */
+  .m-mapbar {
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 10px;
+    background: linear-gradient(180deg, rgba(6, 8, 16, 0.65), rgba(6, 8, 16, 0));
+  }
+  .m-mapbar-name { min-height: 44px; display: flex; align-items: center; }
+  .m-mapbar-btn { min-width: 44px; min-height: 44px; font-size: 18px; padding: 6px; }
+
+  /* --- 侧栏 → 顶部横向滚动 Tab（市场/信息/设置 共用 .mk-sidebar） --- */
+  .mk-sidebar {
+    flex-direction: row;
+    width: 100%;
+    margin: 0;
+    padding: 8px 12px;
+    gap: 8px;
+    align-items: center;
+    align-self: stretch;
+    flex-shrink: 0;
+    border-radius: 0;
+    border-bottom: 1px solid var(--glass-line);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mk-nav, .information-page .info-nav { flex-shrink: 0; }
+
+  /* --- 外层容器改纵向堆叠 --- */
+  .market-page, .information-page, .settings-page, .bag-page, .ala-page, .profile-dashboard {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* --- 主区/内容区内边距收紧（height:auto 让内部滚动生效） --- */
+  .market-page .mk-main, .information-page .mk-main, .bag-main, .settings-main, .ala-main, .profile-main {
+    padding: 12px;
+    height: auto;
+    min-height: 0;
+  }
+  .market-page .mk-content, .information-page .mk-content, .bag-content { padding-right: 4px; }
+
+  /* --- 市场：商品网格/统计卡单列化、大数字缩字号 --- */
+  .market-page .mk-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .market-page .mk-stats, .information-page .mk-stats { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .market-page .mk-stat-value { font-size: 24px; }
+
+  /* --- 信息大厅 --- */
+  .information-page .info-columns { grid-template-columns: 1fr; }
+
+  /* --- 设置 --- */
+  .settings-inner { max-width: none; }
+
+  /* --- 背包 --- */
+  .bag-sidebar {
+    flex-direction: row;
+    width: 100%;
+    margin: 0;
+    padding: 8px 12px;
+    gap: 8px;
+    align-items: center;
+    align-self: stretch;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--glass-line);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .bag-nav { flex-shrink: 0; white-space: nowrap; }
+  .bag-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .bag-slots { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .bag-modal { width: auto; max-width: calc(100vw - 24px); }
+
+  /* --- Ala / Bot：会话列表横铺 --- */
+  .ala-sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--glass-line);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ala-sidebar .ala-logo-sub { display: none; }
+  .ala-nav.ala-conv-list { flex-direction: row; flex: 1; min-width: 0; overflow-x: auto; gap: 6px; }
+  .ala-nav-item { flex-shrink: 0; white-space: nowrap; }
+  .ala-side-foot { flex-direction: row; gap: 6px; }
+
+  /* --- 我的 / Profile：用户卡 + 导航横铺 --- */
+  .profile-sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--glass-line);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .profile-sidebar .ps-user { flex-shrink: 0; display: flex; flex-direction: row; align-items: center; gap: 8px; }
+  .profile-sidebar .ps-level { display: none; }
+  .ps-nav { flex-direction: row; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; }
+  .ps-nav-item { flex-shrink: 0; white-space: nowrap; }
+  .ach-admin { grid-template-columns: 1fr; height: auto; overflow-y: auto; }
+
+  /* --- 形象：预览图与面板上下堆叠 --- */
+  .char-layout { flex-direction: column; padding: 16px; gap: 16px; overflow-y: auto; }
+  .char-preview { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .char-panel { overflow-y: visible; padding-right: 0; }
+
+  /* --- 卡池 --- */
+  .gacha-page { padding: 16px 12px; }
+  .gacha-tabs { flex-wrap: wrap; }
+  .gacha-reveal { max-width: 92vw; }
+
+  /* --- 剧情 --- */
+  .story-page, .story-detail, .story-book { padding: 16px 12px; }
+  .story-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .story-book-grid { grid-template-columns: 1fr; }
+  .story-book-stats { flex-wrap: wrap; }
+
+  /* --- 摊位九宫格 6 列 → 3 列 --- */
+  .stall-grid { grid-template-columns: repeat(3, 1fr); }
+}

@@ -27,7 +27,7 @@ export default function MarketStallBoard({ stalls, myStall, open, isStudent, ses
 
   return (
     <div className="card" style={{ margin: '12px 0' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
         <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><FlagIcon size={15} /> 流动地摊</span>
         {!myStall && open && isStudent && (
           <button className="btn primary" onClick={grab}>抢摊位</button>
@@ -36,7 +36,7 @@ export default function MarketStallBoard({ stalls, myStall, open, isStudent, ses
           <button className="btn primary" onClick={confirmStall}>确认占位（冻结押金）</button>
         )}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
+      <div className="stall-grid">
         {stalls.map((s) => (
           <div key={s.id} style={{
             padding: '6px 4px', textAlign: 'center', borderRadius: 6, fontSize: 12,
