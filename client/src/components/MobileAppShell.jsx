@@ -10,6 +10,7 @@ import {
   Globe,
   CalendarCheck,
   Sparkles,
+  Settings,
 } from 'lucide-react';
 import { useUser } from '../UserContext.jsx';
 import MapEngine from './MapEngine.jsx';
@@ -79,6 +80,9 @@ function HomeMap({ map, onSwitchMap, onSwitchWorld, onGacha, chatOpen, setChatOp
         <button type="button" className="hud-btn m-mapbar-btn" onClick={onGacha} title="卡池" aria-label="卡池">
           <Sparkles size={20} />
         </button>
+        <button type="button" className="hud-btn m-mapbar-btn" onClick={() => navigate('/settings')} title="设置" aria-label="设置">
+          <Settings size={20} />
+        </button>
       </div>
 
       <div className="m-worldchat">
@@ -122,6 +126,9 @@ export default function MobileAppShell({ map, onSwitchMap, onSwitchWorld, onGach
           )}
           <span className="m-topbar-spacer" />
           {user && <span className="m-topbar-user">Lv{user.level ?? 1} · {user.nickname}</span>}
+          <button type="button" className="m-topbar-icon" onClick={() => navigate('/settings')} title="设置" aria-label="设置">
+            <Settings size={20} />
+          </button>
         </header>
       )}
 
